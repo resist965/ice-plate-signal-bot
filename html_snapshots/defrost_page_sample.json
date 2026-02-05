@@ -1,0 +1,41 @@
+{
+  "records": [
+    {
+      "id": "recABC123",
+      "createdTime": "2026-01-15T12:00:00.000Z",
+      "fields": {
+        "Plate ID": "TEST123 (MN)",
+        "Plate": "TEST123",
+        "Reports Count": 3,
+        "Plate Issuer": "MN - Minnesota",
+        "Tags": "ICE decals/insignia, Tinted/blacked-out windows",
+        "Sorting helper column": "T.E.S.T.1.2.3.",
+        "Unique vehicles": "White Honda Civic, White Honda Sedan",
+        "Plate Status": ["Confirmed ICE"],
+        "Last Seen": "2026-01-27T19:30:00.000Z",
+        "Last Location Seen": "123 Main St, Minneapolis",
+        "First seen": "2026-01-15T06:00:00.000Z",
+        "Vehicle Description": "White Honda Civic"
+      }
+    },
+    {
+      "id": "recDEF456",
+      "createdTime": "2026-01-10T08:00:00.000Z",
+      "fields": {
+        "Plate ID": "XYZ789 (WI)",
+        "Plate": "XYZ789",
+        "Reports Count": 1,
+        "Plate Issuer": "WI - Wisconsin",
+        "Tags": "Seen in a convoy",
+        "Sorting helper column": "X.Y.Z.7.8.9.",
+        "Plate Status": ["Highly suspected ICE"],
+        "Last Seen": "2026-01-10T14:00:00.000Z",
+        "Last Location Seen": "456 Oak Ave, St. Paul",
+        "First seen": "2026-01-10T14:00:00.000Z",
+        "Vehicle Description": "Black Ford Explorer"
+      }
+    }
+  ],
+  "offset": "itrXYZ/recNextPage",
+  "updated": "2026-02-01T12:00:00.000Z"
+}

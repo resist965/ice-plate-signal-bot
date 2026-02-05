@@ -1,0 +1,39 @@
+{
+  "plates": [
+    {
+      "license_plate": "TEST123",
+      "records": [
+        {
+          "alert_token": "1000000000000",
+          "media": "",
+          "vehicle_license": "TEST123",
+          "address": "123 Main St, Minneapolis, Minnesota",
+          "vehicle_make": "Honda Civic",
+          "month": "JAN",
+          "day": "15",
+          "year": "2026",
+          "comments": "White | Honda Civic | Sedan",
+          "datestamp": "WED JAN 15 2026 10:30:00 CST",
+          "guest": ""
+        },
+        {
+          "alert_token": "1000000000001",
+          "media": "photo1.jpg",
+          "vehicle_license": "TEST123",
+          "address": "456 Oak Ave, St. Paul, Minnesota",
+          "vehicle_make": "Honda Civic",
+          "month": "FEB",
+          "day": "1",
+          "year": "2026",
+          "comments": "White | Honda Civic | Spotted again",
+          "datestamp": "SAT FEB 1 2026 14:00:00 CST",
+          "guest": ""
+        }
+      ]
+    },
+    {
+      "license_plate": "NOMATCH1",
+      "records": []
+    }
+  ]
+}

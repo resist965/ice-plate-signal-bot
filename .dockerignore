@@ -1,0 +1,7 @@
+.git
+html_snapshots
+*.md
+.env*
+__pycache__
+.vscode
+.idea

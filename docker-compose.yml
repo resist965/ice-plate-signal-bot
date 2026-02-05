@@ -1,0 +1,32 @@
+services:
+  signal-cli-rest-api:
+    image: bbernhard/signal-cli-rest-api:latest
+    environment:
+      - MODE=json-rpc
+    volumes:
+      - signal-cli-config:/home/.local/share/signal-cli
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/about || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  bot:
+    build: .
+    depends_on:
+      signal-cli-rest-api:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - SIGNAL_SERVICE=signal-cli-rest-api:8080
+      - CACHE_DIR=/app/cache
+    volumes:
+      - bot-cache:/app/cache
+
+volumes:
+  signal-cli-config:
+  bot-cache:
