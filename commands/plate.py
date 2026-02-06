@@ -1,12 +1,16 @@
 import asyncio
 import json
+import logging
 import re
 import time
 
 from signalbot import Command, Context, regex_triggered
 
+logger = logging.getLogger(__name__)
+
 from lookup import check_plate, fetch_descriptions, LookupResult, Sighting
 from lookup_defrost import check_plate_defrost
+from ocr import extract_plate_from_image, OCRError
 
 _PENDING_TTL = 3600  # 1 hour
 
@@ -38,12 +42,37 @@ class PlateCommand(Command):
         for ts in expired:
             del self._pending[ts]
 
-    @regex_triggered(r"^/plate\s+(.+)")
+    @regex_triggered(r"^/plate\b")
     async def handle(self, c: Context) -> None:
         self._cleanup_pending()
         await c.react("\U0001f440")  # 👀
 
-        raw_plate = c.message.text.split(maxsplit=1)[1].strip().upper()
+        parts = c.message.text.split(maxsplit=1)
+        has_text = len(parts) > 1 and parts[1].strip()
+        has_image = bool(c.message.base64_attachments)
+
+        if has_text:
+            raw_plate = parts[1].strip().upper()
+        elif has_image:
+            try:
+                raw_plate = await extract_plate_from_image(
+                    c.message.base64_attachments[0]
+                )
+            except OCRError as e:
+                await c.send(f"Could not read plate from image: {e}")
+                return
+            except Exception:
+                logger.exception("Unexpected error during OCR processing")
+                await c.send(
+                    "Could not read plate from image: an unexpected error occurred."
+                )
+                return
+            await c.send(f"Detected plate: {raw_plate} — searching now...")
+        else:
+            await c.send(
+                "Usage: /plate ABC123 or send /plate with an image of a license plate."
+            )
+            return
 
         if not raw_plate or not re.match(r"^[A-Z0-9 \-]+$", raw_plate):
             await c.send("Invalid plate format. Use letters, numbers, spaces, or hyphens.")

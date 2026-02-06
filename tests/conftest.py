@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import cv2
+import numpy as np
 
 import lookup
 import lookup_defrost
@@ -53,7 +55,7 @@ def reset_defrost_caches():
 
 @pytest.fixture
 def mock_context():
-    def _factory(text="", reaction=None, raw_message=None):
+    def _factory(text="", reaction=None, raw_message=None, base64_attachments=None):
         ctx = MagicMock()
         ctx.send = AsyncMock()
         ctx.reply = AsyncMock(return_value=1234567890)
@@ -61,6 +63,7 @@ def mock_context():
         ctx.message.text = text
         ctx.message.reaction = reaction
         ctx.message.raw_message = raw_message
+        ctx.message.base64_attachments = base64_attachments or []
         return ctx
     return _factory
 
@@ -116,3 +119,20 @@ def defrost_encrypted_page():
         "plaintext_str": plaintext_str,
         "encrypted": encrypted,
     }
+
+
+def _make_image_base64(text=None, size=(200, 60)):
+    """Create a synthetic image and return its base64 encoding."""
+    img = np.full((size[1], size[0], 3), 255, dtype=np.uint8)
+    if text:
+        cv2.putText(img, text, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+    _, buf = cv2.imencode(".png", img)
+    return base64.b64encode(buf).decode()
+
+
+@pytest.fixture(scope="session")
+def plate_image_base64():
+    """Synthetic license plate image with text 'ABC1234'."""
+    return _make_image_base64("ABC1234")
+
+

@@ -1,6 +1,6 @@
 # ice-plate-signal-bot
 
-A Signal bot that checks license plates against the [stopice.net](https://www.stopice.net) and [defrostmn.net](https://defrostmn.net) databases. Designed to run in a Signal group chat — send `/plate ABC1234` and the bot will look up the plate across both sources concurrently.
+A Signal bot that checks license plates against the [stopice.net](https://www.stopice.net) and [defrostmn.net](https://defrostmn.net) databases. Designed to run in a Signal group chat — send `/plate ABC1234` or send `/plate` with a photo of a license plate and the bot will look up the plate across both sources concurrently.
 
 ## Privacy
 
@@ -57,6 +57,7 @@ A Signal bot that checks license plates against the [stopice.net](https://www.st
 | Command | Description |
 |---------|-------------|
 | `/plate [LICENSE PLATE]` | Check a plate against the ICE vehicle databases (stopice.net and defrostmn.net) |
+| `/plate` + image | Attach a photo of a license plate — the bot reads the plate via OCR and runs the lookup |
 | `/help` | Show available commands |
 
 When a match is found, the bot replies with a per-source summary (match/no match for each source, plus plate status like "Confirmed ICE" for defrostmn matches). React with 👀 to that reply to fetch full details including dates, locations, vehicle info, and sighting descriptions.
@@ -70,11 +71,13 @@ The bot only responds in the configured group — it ignores DMs and other group
 - `commands/help.py` — `/help` command
 - `lookup.py` — stopice.net lookup: HTTP requests and HTML parsing
 - `lookup_defrost.py` — defrostmn.net lookup: paginated encrypted plates + legacy stopice snapshot
+- `ocr.py` — License plate OCR: ALPR-based plate detection and reading (fast-alpr)
 - `check_sources.py` — Health-check script for live data sources
 
 ### Lookup flow
 
-1. `/plate ABC123` → queries both stopice.net and defrostmn.net concurrently
+1. `/plate ABC123` (or `/plate` + image attachment) → queries both stopice.net and defrostmn.net concurrently
+   - *Image path*: decodes the attached image, runs ALPR (YOLO plate detection + CCT OCR) to extract the plate text, then proceeds with the same lookup flow
    - **stopice.net**: POST to search endpoint → regex-based parsing of the (malformed) HTML results page
    - **defrostmn.net**: searches two sub-sources in parallel and merges results:
      - *Paginated encrypted plates* — fetches metadata, decrypts AES-256-GCM pages, exact match (cached until data changes)
@@ -119,7 +122,7 @@ pytest -v
 pytest --cov=. --cov-report=term-missing
 ```
 
-199 tests covering parsers, async HTTP retry logic, encrypted page decryption, caching, JSON lookup, command handlers, formatting helpers, bot configuration, and health-check script orchestration.
+228 tests covering parsers, async HTTP retry logic, encrypted page decryption, caching, JSON lookup, command handlers, OCR pipeline, formatting helpers, bot configuration, and health-check script orchestration.
 
 Tests use saved HTML/JSON snapshots in `html_snapshots/` and mock all HTTP requests — no live requests to external services are made during testing.
 

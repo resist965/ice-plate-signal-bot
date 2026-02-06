@@ -1,6 +1,7 @@
 """Tests for command handlers in commands/plate.py and commands/help.py."""
 
 import json
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +14,7 @@ from commands.plate import (
     _format_source_result,
 )
 from lookup import LookupResult, Sighting
+from ocr import OCRError
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +207,103 @@ class TestPlateCommandHandle:
         assert "Error: Service down" in reply_text
         assert "MATCH FOUND" in reply_text
         assert cmd.get_pending_sources(1234567890) == {"defrost"}
+
+
+# ---------------------------------------------------------------------------
+# PlateCommand — image OCR
+# ---------------------------------------------------------------------------
+
+class TestPlateCommandOCR:
+    def _make_cmd(self):
+        cmd = PlateCommand.__new__(PlateCommand)
+        cmd.setup()
+        return cmd
+
+    @patch("commands.plate.check_plate_defrost")
+    @patch("commands.plate.check_plate")
+    @patch("commands.plate.extract_plate_from_image")
+    async def test_image_triggers_ocr(self, mock_ocr, mock_check, mock_defrost, mock_context):
+        mock_ocr.return_value = "ABC123"
+        mock_check.return_value = LookupResult(found=False)
+        mock_defrost.return_value = LookupResult(found=False)
+        ctx = mock_context(text="/plate", base64_attachments=["aW1hZ2VkYXRh"])
+        cmd = self._make_cmd()
+        await cmd.handle(ctx)
+
+        mock_ocr.assert_called_once_with("aW1hZ2VkYXRh")
+        mock_check.assert_called_once_with("ABC123")
+        mock_defrost.assert_called_once_with("ABC123")
+        # Confirm detected plate message was sent
+        send_calls = [call[0][0] for call in ctx.send.call_args_list]
+        assert any("Detected plate: ABC123" in msg and "searching" in msg for msg in send_calls)
+
+    @patch("commands.plate.extract_plate_from_image")
+    async def test_ocr_error_sends_message(self, mock_ocr, mock_context):
+        mock_ocr.side_effect = OCRError("Could not read any text from the image.")
+        ctx = mock_context(text="/plate", base64_attachments=["aW1hZ2VkYXRh"])
+        cmd = self._make_cmd()
+        await cmd.handle(ctx)
+
+        send_text = ctx.send.call_args[0][0]
+        assert "Could not read plate from image" in send_text
+
+    async def test_no_text_no_image_sends_usage(self, mock_context):
+        ctx = mock_context(text="/plate")
+        cmd = self._make_cmd()
+        await cmd.handle(ctx)
+
+        send_text = ctx.send.call_args[0][0]
+        assert "Usage:" in send_text
+
+    @patch("commands.plate.check_plate_defrost")
+    @patch("commands.plate.check_plate")
+    @patch("commands.plate.extract_plate_from_image")
+    async def test_text_takes_priority_over_image(
+        self, mock_ocr, mock_check, mock_defrost, mock_context
+    ):
+        mock_check.return_value = LookupResult(found=False)
+        mock_defrost.return_value = LookupResult(found=False)
+        ctx = mock_context(text="/plate XYZ789", base64_attachments=["aW1hZ2VkYXRh"])
+        cmd = self._make_cmd()
+        await cmd.handle(ctx)
+
+        mock_ocr.assert_not_called()
+        mock_check.assert_called_once_with("XYZ789")
+
+    def test_regex_matches_bare_plate(self):
+        assert re.search(r"^/plate\b", "/plate")
+
+    def test_regex_matches_plate_with_text(self):
+        assert re.search(r"^/plate\b", "/plate ABC123")
+
+    def test_regex_no_match_plateinfo(self):
+        assert re.search(r"^/plate\b", "/plateinfo") is None
+
+    @patch("commands.plate.extract_plate_from_image")
+    async def test_unexpected_error_sends_message(self, mock_ocr, mock_context):
+        mock_ocr.side_effect = RuntimeError("Model inference failed")
+        ctx = mock_context(text="/plate", base64_attachments=["aW1hZ2VkYXRh"])
+        cmd = self._make_cmd()
+        await cmd.handle(ctx)
+
+        send_text = ctx.send.call_args[0][0]
+        assert "Could not read plate from image" in send_text
+
+    @patch("commands.plate.check_plate_defrost")
+    @patch("commands.plate.check_plate")
+    @patch("commands.plate.extract_plate_from_image")
+    async def test_trailing_space_with_image_triggers_ocr(
+        self, mock_ocr, mock_check, mock_defrost, mock_context
+    ):
+        mock_ocr.return_value = "ABC123"
+        mock_check.return_value = LookupResult(found=False)
+        mock_defrost.return_value = LookupResult(found=False)
+        ctx = mock_context(text="/plate ", base64_attachments=["aW1hZ2VkYXRh"])
+        cmd = self._make_cmd()
+        await cmd.handle(ctx)
+
+        mock_ocr.assert_called_once_with("aW1hZ2VkYXRh")
+        mock_check.assert_called_once_with("ABC123")
 
 
 # ---------------------------------------------------------------------------
