@@ -1,15 +1,14 @@
-import asyncio
 import base64
-from unittest.mock import patch, MagicMock
+import binascii
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from ocr import (
     OCRError,
-    _MAX_IMAGE_PIXELS,
-    decode_image,
     _extract_plate_text,
+    decode_image,
     extract_plate_from_image,
 )
 
@@ -34,6 +33,7 @@ class TestDecodeImage:
 
     def test_valid_jpeg(self):
         import cv2
+
         img = np.full((50, 100, 3), (0, 0, 255), dtype=np.uint8)
         _, buf = cv2.imencode(".jpg", img)
         b64 = base64.b64encode(buf).decode()
@@ -42,7 +42,7 @@ class TestDecodeImage:
         assert isinstance(result, np.ndarray)
 
     def test_invalid_base64_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(binascii.Error):
             decode_image("not-valid-base64!!!")
 
     def test_too_large_image_raises(self):
@@ -199,12 +199,12 @@ class TestExtractPlateFromImage:
 
         def slow_predict(_frame):
             import time
+
             time.sleep(5)
             return []
 
         mock_alpr.predict.side_effect = slow_predict
         mock_get_alpr.return_value = mock_alpr
 
-        with patch("ocr._ALPR_TIMEOUT", 0.1):
-            with pytest.raises(OCRError, match="timed out"):
-                await extract_plate_from_image(plate_image_base64)
+        with patch("ocr._ALPR_TIMEOUT", 0.1), pytest.raises(OCRError, match="timed out"):
+            await extract_plate_from_image(plate_image_base64)

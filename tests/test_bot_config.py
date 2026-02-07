@@ -104,8 +104,11 @@ class TestBotConfig:
 
     @patch.dict(
         "os.environ",
-        {"PHONE_NUMBER": "+15551234567", "SIGNAL_GROUP": "grp1",
-         "DEFROST_JSON_URL": "https://example.com/plates.json"},
+        {
+            "PHONE_NUMBER": "+15551234567",
+            "SIGNAL_GROUP": "grp1",
+            "DEFROST_JSON_URL": "https://example.com/plates.json",
+        },
         clear=True,
     )
     @patch("bot.SignalBot")
@@ -120,8 +123,7 @@ class TestBotConfig:
 
     @patch.dict(
         "os.environ",
-        {"PHONE_NUMBER": "+15551234567", "SIGNAL_GROUP": "grp1",
-         "DEFROST_DECRYPT_KEY": "somekey"},
+        {"PHONE_NUMBER": "+15551234567", "SIGNAL_GROUP": "grp1", "DEFROST_DECRYPT_KEY": "somekey"},
         clear=True,
     )
     @patch("bot.SignalBot")
@@ -133,9 +135,12 @@ class TestBotConfig:
 
     @patch.dict(
         "os.environ",
-        {"PHONE_NUMBER": "+15551234567", "SIGNAL_GROUP": "grp1",
-         "DEFROST_DECRYPT_KEY": "somekey",
-         "DEFROST_JSON_URL": "https://example.com/plates.json"},
+        {
+            "PHONE_NUMBER": "+15551234567",
+            "SIGNAL_GROUP": "grp1",
+            "DEFROST_DECRYPT_KEY": "somekey",
+            "DEFROST_JSON_URL": "https://example.com/plates.json",
+        },
         clear=True,
     )
     @patch("bot.SignalBot")

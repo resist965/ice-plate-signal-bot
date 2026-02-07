@@ -1,13 +1,13 @@
 """ice-plate-signal-bot — Signal bot for license plate lookups."""
 
-import atexit
 import asyncio
+import atexit
 import logging
 import os
 
 from signalbot import SignalBot
 
-from commands import PlateCommand, PlateDetailCommand, HelpCommand
+from commands import HelpCommand, PlateCommand, PlateDetailCommand
 from lookup import close_session
 
 
@@ -30,12 +30,11 @@ def main() -> None:
             "— all defrostmn.net lookups will be disabled"
         )
     elif not has_decrypt_key:
-        logging.warning(
-            "DEFROST_DECRYPT_KEY not set — only stopice snapshot lookups active"
-        )
+        logging.warning("DEFROST_DECRYPT_KEY not set — only stopice snapshot lookups active")
 
     if debug:
         from signalbot import enable_console_logging
+
         enable_console_logging(logging.INFO)
     else:
         logging.disable(logging.CRITICAL)

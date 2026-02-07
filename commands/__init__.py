@@ -1,4 +1,4 @@
-from commands.plate import PlateCommand, PlateDetailCommand
 from commands.help import HelpCommand
+from commands.plate import PlateCommand, PlateDetailCommand
 
-__all__ = ["PlateCommand", "PlateDetailCommand", "HelpCommand"]
+__all__ = ["HelpCommand", "PlateCommand", "PlateDetailCommand"]

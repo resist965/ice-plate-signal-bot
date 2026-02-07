@@ -6,11 +6,11 @@ import time
 
 from signalbot import Command, Context, regex_triggered
 
-logger = logging.getLogger(__name__)
-
-from lookup import check_plate, fetch_descriptions, LookupResult, Sighting
+from lookup import BASE_URL, LookupResult, Sighting, check_plate, fetch_descriptions
 from lookup_defrost import check_plate_defrost
-from ocr import extract_plate_from_image, OCRError
+from ocr import OCRError, extract_plate_from_image
+
+logger = logging.getLogger(__name__)
 
 _PENDING_TTL = 3600  # 1 hour
 
@@ -55,23 +55,17 @@ class PlateCommand(Command):
             raw_plate = parts[1].strip().upper()
         elif has_image:
             try:
-                raw_plate = await extract_plate_from_image(
-                    c.message.base64_attachments[0]
-                )
+                raw_plate = await extract_plate_from_image(c.message.base64_attachments[0])
             except OCRError as e:
                 await c.send(f"Could not read plate from image: {e}")
                 return
             except Exception:
                 logger.exception("Unexpected error during OCR processing")
-                await c.send(
-                    "Could not read plate from image: an unexpected error occurred."
-                )
+                await c.send("Could not read plate from image: an unexpected error occurred.")
                 return
             await c.send(f"Detected plate: {raw_plate} — searching now...")
         else:
-            await c.send(
-                "Usage: /plate ABC123 or send /plate with an image of a license plate."
-            )
+            await c.send("Usage: /plate ABC123 or send /plate with an image of a license plate.")
             return
 
         if not raw_plate or not re.match(r"^[A-Z0-9 \-]+$", raw_plate):
@@ -140,7 +134,7 @@ class PlateDetailCommand(Command):
         if tasks:
             keys = list(tasks.keys())
             gathered = await asyncio.gather(*tasks.values())
-            results = dict(zip(keys, gathered))
+            results = dict(zip(keys, gathered, strict=True))
 
         lines = [f"Details for {plate}:"]
         any_sightings = False
@@ -148,27 +142,27 @@ class PlateDetailCommand(Command):
         if "stopice" in results:
             result = results["stopice"]
             if result.error:
-                lines.append(f"\n--- stopice.net ---")
+                lines.append("\n--- stopice.net ---")
                 lines.append(f"Error: {result.error}")
-                lines.append(f"https://www.stopice.net/platetracker/index.cgi?plate={plate}")
+                lines.append(f"{BASE_URL}?plate={plate}")
             elif result.sightings:
                 any_sightings = True
-                lines.append(f"\n--- stopice.net ---")
+                lines.append("\n--- stopice.net ---")
                 lines.extend(_format_sighting_details(result.sightings))
-                lines.append(f"\nhttps://www.stopice.net/platetracker/index.cgi?plate={plate}")
+                lines.append(f"\n{BASE_URL}?plate={plate}")
             else:
-                lines.append(f"\n--- stopice.net ---")
-                lines.append(f"No sightings found on the detail page.")
-                lines.append(f"https://www.stopice.net/platetracker/index.cgi?plate={plate}")
+                lines.append("\n--- stopice.net ---")
+                lines.append("No sightings found on the detail page.")
+                lines.append(f"{BASE_URL}?plate={plate}")
 
         if "defrost" in results:
             result = results["defrost"]
             if result.error:
-                lines.append(f"\n--- defrostmn.net ---")
+                lines.append("\n--- defrostmn.net ---")
                 lines.append(f"Error: {result.error}")
             elif result.sightings:
                 any_sightings = True
-                lines.append(f"\n--- defrostmn.net ---")
+                lines.append("\n--- defrostmn.net ---")
                 lines.extend(_format_sighting_details(result.sightings))
 
         if any_sightings:

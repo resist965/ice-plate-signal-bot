@@ -10,12 +10,11 @@ from aioresponses import aioresponses
 import lookup
 from lookup import (
     BASE_URL,
-    LookupResult,
-    fetch_with_retry,
     _get_session,
     check_plate,
     close_session,
     fetch_descriptions,
+    fetch_with_retry,
 )
 
 # Pattern to match BASE_URL with any query params
@@ -31,6 +30,7 @@ def mock_aio():
 # ---------------------------------------------------------------------------
 # fetch_with_retry
 # ---------------------------------------------------------------------------
+
 
 class TestFetchWithRetry:
     async def test_200_returns_html(self, mock_aio):
@@ -80,6 +80,7 @@ class TestFetchWithRetry:
 # check_plate
 # ---------------------------------------------------------------------------
 
+
 class TestCheckPlate:
     async def test_match_found(self, mock_aio, html_search_match):
         mock_aio.post(BASE_URL, status=200, body=html_search_match)
@@ -114,6 +115,7 @@ class TestCheckPlate:
 # fetch_descriptions
 # ---------------------------------------------------------------------------
 
+
 class TestFetchDescriptions:
     async def test_success(self, mock_aio, html_detail_page):
         mock_aio.get(BASE_URL_PATTERN, status=200, body=html_detail_page)
@@ -143,6 +145,7 @@ class TestFetchDescriptions:
 # ---------------------------------------------------------------------------
 # _get_session / close_session
 # ---------------------------------------------------------------------------
+
 
 class TestSessionManagement:
     async def test_get_session_creates_session(self):

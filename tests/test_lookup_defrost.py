@@ -1,11 +1,13 @@
 """Tests for lookup_defrost.py — defrostmn.net plate lookup with paginated encrypted data."""
 
+import binascii
 import json
 import os
 import time
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
+from cryptography.exceptions import InvalidTag
 
 import lookup_defrost
 from lookup import LookupResult, Sighting
@@ -13,25 +15,25 @@ from lookup_defrost import (
     _check_paginated_plates,
     _check_stopice_fallback,
     _decrypt_page,
-    _get_cache_dir,
-    _load_cache,
-    _save_cache,
-    fetch_all_pages,
-    fetch_meta,
     _format_date,
     _format_iso_date,
+    _get_cache_dir,
+    _load_cache,
     _merge_results,
     _record_to_sighting,
+    _save_cache,
     _search_paginated_plates,
     _search_stopice_plates,
     check_plate_defrost,
+    fetch_all_pages,
+    fetch_meta,
 )
 from tests.conftest import _TEST_PASSWORD
-
 
 # ---------------------------------------------------------------------------
 # _format_date (stopice legacy format)
 # ---------------------------------------------------------------------------
+
 
 class TestFormatDate:
     def test_all_fields_present(self):
@@ -58,6 +60,7 @@ class TestFormatDate:
 # _format_iso_date
 # ---------------------------------------------------------------------------
 
+
 class TestFormatIsoDate:
     def test_valid_iso(self):
         assert _format_iso_date("2026-01-27T19:30:00.000Z") == "Jan 27, 2026"
@@ -73,6 +76,7 @@ class TestFormatIsoDate:
 # _decrypt_page
 # ---------------------------------------------------------------------------
 
+
 class TestDecryptPage:
     def test_successful_decryption(self, defrost_encrypted_page):
         result = _decrypt_page(
@@ -84,7 +88,7 @@ class TestDecryptPage:
         assert data["records"][0]["fields"]["Plate"] == "TEST123"
 
     def test_wrong_password(self, defrost_encrypted_page):
-        with pytest.raises(Exception):
+        with pytest.raises(InvalidTag):
             _decrypt_page(defrost_encrypted_page["encrypted"], "wrong-password")
 
     def test_missing_fields(self):
@@ -92,7 +96,7 @@ class TestDecryptPage:
             _decrypt_page({"salt": "dGVzdA==", "iv": "dGVzdA=="}, "password")
 
     def test_bad_base64(self):
-        with pytest.raises(Exception):
+        with pytest.raises(binascii.Error):
             _decrypt_page(
                 {"salt": "!!!invalid!!!", "iv": "dGVzdA==", "ciphertext": "dGVzdA=="},
                 "password",
@@ -102,6 +106,7 @@ class TestDecryptPage:
 # ---------------------------------------------------------------------------
 # _record_to_sighting
 # ---------------------------------------------------------------------------
+
 
 class TestRecordToSighting:
     def test_full_fields(self):
@@ -140,6 +145,7 @@ class TestRecordToSighting:
 # fetch_meta
 # ---------------------------------------------------------------------------
 
+
 class TestFetchMeta:
     @patch("lookup_defrost.fetch_with_retry")
     async def test_success(self, mock_fetch):
@@ -167,6 +173,7 @@ class TestFetchMeta:
 # ---------------------------------------------------------------------------
 # fetch_all_pages
 # ---------------------------------------------------------------------------
+
 
 class TestFetchAllPages:
     @patch("lookup_defrost.get_decrypt_key", return_value=_TEST_PASSWORD)
@@ -214,6 +221,7 @@ class TestFetchAllPages:
 # _search_paginated_plates
 # ---------------------------------------------------------------------------
 
+
 class TestSearchPaginatedPlates:
     def test_exact_match(self, defrost_page_sample):
         data = json.loads(defrost_page_sample)
@@ -246,6 +254,7 @@ class TestSearchPaginatedPlates:
 # _search_stopice_plates
 # ---------------------------------------------------------------------------
 
+
 class TestSearchStopicePlates:
     def test_exact_match(self, defrost_json_sample):
         data = json.loads(defrost_json_sample)
@@ -264,6 +273,7 @@ class TestSearchStopicePlates:
 # ---------------------------------------------------------------------------
 # _check_paginated_plates
 # ---------------------------------------------------------------------------
+
 
 class TestCheckPaginatedPlates:
     @patch("lookup_defrost.get_decrypt_key", return_value="testkey")
@@ -350,6 +360,7 @@ class TestCheckPaginatedPlates:
 # _check_stopice_fallback
 # ---------------------------------------------------------------------------
 
+
 class TestCheckStopiceFallback:
     @patch("lookup_defrost.get_defrost_url", return_value="https://example.com/plates.json")
     @patch("lookup_defrost.fetch_with_retry")
@@ -431,13 +442,22 @@ class TestCheckStopiceFallback:
 # _merge_results
 # ---------------------------------------------------------------------------
 
+
 class TestMergeResults:
     def test_both_found(self):
-        r1 = LookupResult(found=True, match_count=1, record_count=3,
-                          sightings=[Sighting(date="Jan 1", location="A")],
-                          status="Confirmed ICE")
-        r2 = LookupResult(found=True, match_count=1, record_count=2,
-                          sightings=[Sighting(date="Feb 1", location="B")])
+        r1 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=3,
+            sightings=[Sighting(date="Jan 1", location="A")],
+            status="Confirmed ICE",
+        )
+        r2 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=2,
+            sightings=[Sighting(date="Feb 1", location="B")],
+        )
         merged = _merge_results(r1, r2)
         assert merged.found is True
         assert merged.match_count == 2
@@ -446,8 +466,12 @@ class TestMergeResults:
         assert merged.status == "Confirmed ICE"
 
     def test_only_paginated_found(self):
-        r1 = LookupResult(found=True, match_count=1, record_count=1,
-                          sightings=[Sighting(date="Jan 1", location="A")])
+        r1 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=1,
+            sightings=[Sighting(date="Jan 1", location="A")],
+        )
         r2 = LookupResult(found=False)
         merged = _merge_results(r1, r2)
         assert merged.found is True
@@ -456,8 +480,12 @@ class TestMergeResults:
 
     def test_only_stopice_found(self):
         r1 = LookupResult(found=False)
-        r2 = LookupResult(found=True, match_count=1, record_count=2,
-                          sightings=[Sighting(date="Jan 1", location="A")])
+        r2 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=2,
+            sightings=[Sighting(date="Jan 1", location="A")],
+        )
         merged = _merge_results(r1, r2)
         assert merged.found is True
         assert merged.match_count == 1
@@ -478,8 +506,12 @@ class TestMergeResults:
         assert "stopice" in merged.error
 
     def test_one_found_one_error(self):
-        r1 = LookupResult(found=True, match_count=1, record_count=1,
-                          sightings=[Sighting(date="Jan 1", location="A")])
+        r1 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=1,
+            sightings=[Sighting(date="Jan 1", location="A")],
+        )
         r2 = LookupResult(found=False, error="stopice error")
         merged = _merge_results(r1, r2)
         assert merged.found is True
@@ -487,13 +519,21 @@ class TestMergeResults:
 
     def test_duplicate_plate_both_sources_returns_all_sightings(self):
         """When the same plate exists in both sources, all sightings are included."""
-        r1 = LookupResult(found=True, match_count=1, record_count=2,
-                          sightings=[Sighting(date="Jan 1", location="Paginated loc")])
-        r2 = LookupResult(found=True, match_count=1, record_count=3,
-                          sightings=[
-                              Sighting(date="Feb 1", location="Stopice loc A"),
-                              Sighting(date="Mar 1", location="Stopice loc B"),
-                          ])
+        r1 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=2,
+            sightings=[Sighting(date="Jan 1", location="Paginated loc")],
+        )
+        r2 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=3,
+            sightings=[
+                Sighting(date="Feb 1", location="Stopice loc A"),
+                Sighting(date="Mar 1", location="Stopice loc B"),
+            ],
+        )
         merged = _merge_results(r1, r2)
         assert merged.found is True
         assert merged.match_count == 2
@@ -505,28 +545,52 @@ class TestMergeResults:
         assert merged.sightings[2].location == "Stopice loc B"
 
     def test_merge_propagates_paginated_status(self):
-        r1 = LookupResult(found=True, match_count=1, record_count=1,
-                          sightings=[Sighting(date="Jan 1", location="A")],
-                          status="Confirmed ICE")
-        r2 = LookupResult(found=True, match_count=1, record_count=1,
-                          sightings=[Sighting(date="Feb 1", location="B")])
+        r1 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=1,
+            sightings=[Sighting(date="Jan 1", location="A")],
+            status="Confirmed ICE",
+        )
+        r2 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=1,
+            sightings=[Sighting(date="Feb 1", location="B")],
+        )
         merged = _merge_results(r1, r2)
         assert merged.status == "Confirmed ICE"
 
     def test_merge_falls_back_to_stopice_status(self):
-        r1 = LookupResult(found=True, match_count=1, record_count=1,
-                          sightings=[Sighting(date="Jan 1", location="A")])
-        r2 = LookupResult(found=True, match_count=1, record_count=1,
-                          sightings=[Sighting(date="Feb 1", location="B")],
-                          status="Highly suspected ICE")
+        r1 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=1,
+            sightings=[Sighting(date="Jan 1", location="A")],
+        )
+        r2 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=1,
+            sightings=[Sighting(date="Feb 1", location="B")],
+            status="Highly suspected ICE",
+        )
         merged = _merge_results(r1, r2)
         assert merged.status == "Highly suspected ICE"
 
     def test_merge_no_status(self):
-        r1 = LookupResult(found=True, match_count=1, record_count=1,
-                          sightings=[Sighting(date="Jan 1", location="A")])
-        r2 = LookupResult(found=True, match_count=1, record_count=1,
-                          sightings=[Sighting(date="Feb 1", location="B")])
+        r1 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=1,
+            sightings=[Sighting(date="Jan 1", location="A")],
+        )
+        r2 = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=1,
+            sightings=[Sighting(date="Feb 1", location="B")],
+        )
         merged = _merge_results(r1, r2)
         assert merged.status is None
 
@@ -535,16 +599,21 @@ class TestMergeResults:
 # check_plate_defrost (integration)
 # ---------------------------------------------------------------------------
 
+
 class TestCheckPlateDefrostIntegration:
     @patch("lookup_defrost._check_stopice_fallback")
     @patch("lookup_defrost._check_paginated_plates")
     async def test_both_sources_match(self, mock_paginated, mock_stopice):
         mock_paginated.return_value = LookupResult(
-            found=True, match_count=1, record_count=3,
+            found=True,
+            match_count=1,
+            record_count=3,
             sightings=[Sighting(date="Jan 1", location="A")],
         )
         mock_stopice.return_value = LookupResult(
-            found=True, match_count=1, record_count=2,
+            found=True,
+            match_count=1,
+            record_count=2,
             sightings=[Sighting(date="Feb 1", location="B")],
         )
         result = await check_plate_defrost("TEST123")
@@ -557,7 +626,9 @@ class TestCheckPlateDefrostIntegration:
     @patch("lookup_defrost._check_paginated_plates")
     async def test_only_paginated_matches(self, mock_paginated, mock_stopice):
         mock_paginated.return_value = LookupResult(
-            found=True, match_count=1, record_count=1,
+            found=True,
+            match_count=1,
+            record_count=1,
             sightings=[Sighting(date="Jan 1", location="A")],
         )
         mock_stopice.return_value = LookupResult(found=False)
@@ -587,6 +658,7 @@ class TestCheckPlateDefrostIntegration:
 # _get_cache_dir
 # ---------------------------------------------------------------------------
 
+
 class TestGetCacheDir:
     def test_returns_env_var(self):
         with patch.dict(os.environ, {"CACHE_DIR": "/tmp/test-cache"}):
@@ -604,6 +676,7 @@ class TestGetCacheDir:
 # ---------------------------------------------------------------------------
 # _save_cache / _load_cache
 # ---------------------------------------------------------------------------
+
 
 class TestSaveLoadCache:
     def test_save_and_load_roundtrip(self, tmp_path):
@@ -657,12 +730,14 @@ class TestSaveLoadCache:
 # Disk cache integration: _check_paginated_plates
 # ---------------------------------------------------------------------------
 
+
 class TestPaginatedDiskCache:
     @patch("lookup_defrost.get_decrypt_key", return_value="testkey")
     @patch("lookup_defrost.fetch_all_pages")
     @patch("lookup_defrost.fetch_meta")
-    async def test_saves_to_disk_after_fetch(self, mock_meta, mock_pages, _key,
-                                              tmp_path, defrost_page_sample):
+    async def test_saves_to_disk_after_fetch(
+        self, mock_meta, mock_pages, _key, tmp_path, defrost_page_sample
+    ):
         data = json.loads(defrost_page_sample)
         mock_meta.return_value = (
             {"rotation": 1, "numPages": 1, "updated": "2026-02-01T00:00:00Z"},
@@ -681,8 +756,9 @@ class TestPaginatedDiskCache:
 
     @patch("lookup_defrost.get_decrypt_key", return_value="testkey")
     @patch("lookup_defrost.fetch_meta")
-    async def test_loads_from_disk_on_cold_start(self, mock_meta, _key,
-                                                  tmp_path, defrost_page_sample):
+    async def test_loads_from_disk_on_cold_start(
+        self, mock_meta, _key, tmp_path, defrost_page_sample
+    ):
         data = json.loads(defrost_page_sample)
         # Pre-populate disk cache
         cache_data = {"updated": "2026-02-01T00:00:00Z", "records": data["records"]}
@@ -700,8 +776,9 @@ class TestPaginatedDiskCache:
 
     @patch("lookup_defrost.get_decrypt_key", return_value="testkey")
     @patch("lookup_defrost.fetch_meta")
-    async def test_disk_load_serves_stale_on_meta_failure(self, mock_meta, _key,
-                                                           tmp_path, defrost_page_sample):
+    async def test_disk_load_serves_stale_on_meta_failure(
+        self, mock_meta, _key, tmp_path, defrost_page_sample
+    ):
         data = json.loads(defrost_page_sample)
         cache_data = {"updated": "2026-01-01T00:00:00Z", "records": data["records"]}
         (tmp_path / "cache_paginated.json").write_text(json.dumps(cache_data))
@@ -717,11 +794,11 @@ class TestPaginatedDiskCache:
 # Disk cache integration: _check_stopice_fallback
 # ---------------------------------------------------------------------------
 
+
 class TestStopiceDiskCache:
     @patch("lookup_defrost.get_defrost_url", return_value="https://example.com/plates.json")
     @patch("lookup_defrost.fetch_with_retry")
-    async def test_saves_to_disk_after_fetch(self, mock_fetch, _url,
-                                              tmp_path, defrost_json_sample):
+    async def test_saves_to_disk_after_fetch(self, mock_fetch, _url, tmp_path, defrost_json_sample):
         mock_fetch.return_value = (defrost_json_sample, None)
 
         with patch.dict(os.environ, {"CACHE_DIR": str(tmp_path)}):
@@ -735,8 +812,9 @@ class TestStopiceDiskCache:
 
     @patch("lookup_defrost.get_defrost_url", return_value="https://example.com/plates.json")
     @patch("lookup_defrost.fetch_with_retry")
-    async def test_loads_from_disk_within_ttl(self, mock_fetch, _url,
-                                               tmp_path, defrost_json_sample):
+    async def test_loads_from_disk_within_ttl(
+        self, mock_fetch, _url, tmp_path, defrost_json_sample
+    ):
         data = json.loads(defrost_json_sample)
         cache_data = {"cache_time": time.time(), "plates": data["plates"]}
         (tmp_path / "cache_stopice.json").write_text(json.dumps(cache_data))
@@ -748,8 +826,9 @@ class TestStopiceDiskCache:
 
     @patch("lookup_defrost.get_defrost_url", return_value="https://example.com/plates.json")
     @patch("lookup_defrost.fetch_with_retry")
-    async def test_disk_load_expired_refetches(self, mock_fetch, _url,
-                                                tmp_path, defrost_json_sample):
+    async def test_disk_load_expired_refetches(
+        self, mock_fetch, _url, tmp_path, defrost_json_sample
+    ):
         data = json.loads(defrost_json_sample)
         cache_data = {"cache_time": time.time() - 4 * 3600, "plates": data["plates"]}
         (tmp_path / "cache_stopice.json").write_text(json.dumps(cache_data))
@@ -763,8 +842,9 @@ class TestStopiceDiskCache:
 
     @patch("lookup_defrost.get_defrost_url", return_value="https://example.com/plates.json")
     @patch("lookup_defrost.fetch_with_retry")
-    async def test_disk_load_serves_stale_on_fetch_failure(self, mock_fetch, _url,
-                                                            tmp_path, defrost_json_sample):
+    async def test_disk_load_serves_stale_on_fetch_failure(
+        self, mock_fetch, _url, tmp_path, defrost_json_sample
+    ):
         data = json.loads(defrost_json_sample)
         cache_data = {"cache_time": time.time() - 4 * 3600, "plates": data["plates"]}
         (tmp_path / "cache_stopice.json").write_text(json.dumps(cache_data))

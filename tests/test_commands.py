@@ -2,9 +2,7 @@
 
 import json
 import re
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from commands.help import HELP_TEXT, HelpCommand
 from commands.plate import (
@@ -16,10 +14,10 @@ from commands.plate import (
 from lookup import LookupResult, Sighting
 from ocr import OCRError
 
-
 # ---------------------------------------------------------------------------
 # PlateCommand — pending state
 # ---------------------------------------------------------------------------
+
 
 class TestPlateCommandPending:
     def _make_cmd(self):
@@ -62,7 +60,7 @@ class TestPlateCommandPending:
     @patch("commands.plate.time.time", return_value=10000.0)
     def test_cleanup_pending_removes_old(self, _mock_time):
         cmd = self._make_cmd()
-        cmd._pending[1] = ("OLD", 1.0, {"stopice"})       # expired (10000 - 3600 = 6400 > 1.0)
+        cmd._pending[1] = ("OLD", 1.0, {"stopice"})  # expired (10000 - 3600 = 6400 > 1.0)
         cmd._pending[2] = ("RECENT", 9999.0, {"defrost"})  # still valid
         cmd._cleanup_pending()
         assert 1 not in cmd._pending
@@ -80,6 +78,7 @@ class TestPlateCommandPending:
 # PlateCommand.handle()
 # ---------------------------------------------------------------------------
 
+
 class TestPlateCommandHandle:
     def _make_cmd(self):
         cmd = PlateCommand.__new__(PlateCommand)
@@ -90,7 +89,9 @@ class TestPlateCommandHandle:
     @patch("commands.plate.check_plate")
     async def test_valid_plate_match(self, mock_check, mock_defrost, mock_context):
         mock_check.return_value = LookupResult(
-            found=True, match_count=1, record_count=3,
+            found=True,
+            match_count=1,
+            record_count=3,
             sightings=[Sighting(date="JAN 1 2026", location="CITY A")],
         )
         mock_defrost.return_value = LookupResult(found=False)
@@ -148,11 +149,15 @@ class TestPlateCommandHandle:
     @patch("commands.plate.check_plate")
     async def test_both_sources_match(self, mock_check, mock_defrost, mock_context):
         mock_check.return_value = LookupResult(
-            found=True, match_count=1, record_count=2,
+            found=True,
+            match_count=1,
+            record_count=2,
             sightings=[Sighting(date="JAN 1 2026", location="CITY A")],
         )
         mock_defrost.return_value = LookupResult(
-            found=True, match_count=1, record_count=1,
+            found=True,
+            match_count=1,
+            record_count=1,
             sightings=[Sighting(date="FEB 1 2026", location="CITY B")],
         )
         ctx = mock_context(text="/plate SXF180")
@@ -170,7 +175,9 @@ class TestPlateCommandHandle:
     async def test_only_defrost_matches(self, mock_check, mock_defrost, mock_context):
         mock_check.return_value = LookupResult(found=False)
         mock_defrost.return_value = LookupResult(
-            found=True, match_count=1, record_count=1,
+            found=True,
+            match_count=1,
+            record_count=1,
             sightings=[Sighting(date="FEB 1 2026", location="CITY B")],
         )
         ctx = mock_context(text="/plate SXF180")
@@ -196,7 +203,9 @@ class TestPlateCommandHandle:
     async def test_one_errors_one_matches(self, mock_check, mock_defrost, mock_context):
         mock_check.return_value = LookupResult(found=False, error="Service down")
         mock_defrost.return_value = LookupResult(
-            found=True, match_count=1, record_count=1,
+            found=True,
+            match_count=1,
+            record_count=1,
             sightings=[Sighting(date="FEB 1 2026", location="CITY B")],
         )
         ctx = mock_context(text="/plate SXF180")
@@ -212,6 +221,7 @@ class TestPlateCommandHandle:
 # ---------------------------------------------------------------------------
 # PlateCommand — image OCR
 # ---------------------------------------------------------------------------
+
 
 class TestPlateCommandOCR:
     def _make_cmd(self):
@@ -310,6 +320,7 @@ class TestPlateCommandOCR:
 # PlateDetailCommand.handle()
 # ---------------------------------------------------------------------------
 
+
 class TestPlateDetailCommandHandle:
     def _make_detail_cmd(self, plate_cmd=None):
         cmd = PlateDetailCommand.__new__(PlateDetailCommand)
@@ -344,7 +355,11 @@ class TestPlateDetailCommandHandle:
 
         mock_fetch.return_value = LookupResult(
             found=True,
-            sightings=[Sighting(date="JAN 1", location="CITY", vehicle="MAZDA", description="desc", time="10:00")],
+            sightings=[
+                Sighting(
+                    date="JAN 1", location="CITY", vehicle="MAZDA", description="desc", time="10:00"
+                )
+            ],
         )
 
         raw = json.dumps({"envelope": {"dataMessage": {"reaction": {"targetSentTimestamp": 555}}}})
@@ -420,11 +435,27 @@ class TestPlateDetailCommandHandle:
 
         mock_fetch.return_value = LookupResult(
             found=True,
-            sightings=[Sighting(date="JAN 1", location="CITY A", vehicle="MAZDA", description="desc1", time="10:00")],
+            sightings=[
+                Sighting(
+                    date="JAN 1",
+                    location="CITY A",
+                    vehicle="MAZDA",
+                    description="desc1",
+                    time="10:00",
+                )
+            ],
         )
         mock_defrost.return_value = LookupResult(
             found=True,
-            sightings=[Sighting(date="FEB 1", location="CITY B", vehicle="Honda", description="desc2", time="14:00")],
+            sightings=[
+                Sighting(
+                    date="FEB 1",
+                    location="CITY B",
+                    vehicle="Honda",
+                    description="desc2",
+                    time="14:00",
+                )
+            ],
         )
 
         raw = json.dumps({"envelope": {"dataMessage": {"reaction": {"targetSentTimestamp": 555}}}})
@@ -450,7 +481,15 @@ class TestPlateDetailCommandHandle:
 
         mock_defrost.return_value = LookupResult(
             found=True,
-            sightings=[Sighting(date="FEB 1", location="CITY B", vehicle="Honda", description="desc", time="14:00")],
+            sightings=[
+                Sighting(
+                    date="FEB 1",
+                    location="CITY B",
+                    vehicle="Honda",
+                    description="desc",
+                    time="14:00",
+                )
+            ],
         )
 
         raw = json.dumps({"envelope": {"dataMessage": {"reaction": {"targetSentTimestamp": 555}}}})
@@ -470,6 +509,7 @@ class TestPlateDetailCommandHandle:
 # _format_source_result
 # ---------------------------------------------------------------------------
 
+
 class TestFormatSourceResult:
     def test_match_found(self):
         result = LookupResult(found=True, match_count=1, record_count=3)
@@ -478,8 +518,7 @@ class TestFormatSourceResult:
         assert "stopice.net" in text
 
     def test_match_found_with_status(self):
-        result = LookupResult(found=True, match_count=1, record_count=1,
-                              status="Confirmed ICE")
+        result = LookupResult(found=True, match_count=1, record_count=1, status="Confirmed ICE")
         text = _format_source_result("defrostmn.net", result)
         assert "MATCH FOUND" in text
         assert "Confirmed ICE" in text
@@ -507,21 +546,22 @@ class TestFormatSourceResult:
 # _extract_reaction_target_ts
 # ---------------------------------------------------------------------------
 
+
 class TestExtractReactionTargetTs:
     def test_data_message_path(self):
-        raw = json.dumps({
-            "envelope": {
-                "dataMessage": {"reaction": {"targetSentTimestamp": 12345}}
-            }
-        })
+        raw = json.dumps(
+            {"envelope": {"dataMessage": {"reaction": {"targetSentTimestamp": 12345}}}}
+        )
         assert _extract_reaction_target_ts(raw) == 12345
 
     def test_sync_message_path(self):
-        raw = json.dumps({
-            "envelope": {
-                "syncMessage": {"sentMessage": {"reaction": {"targetSentTimestamp": 67890}}}
+        raw = json.dumps(
+            {
+                "envelope": {
+                    "syncMessage": {"sentMessage": {"reaction": {"targetSentTimestamp": 67890}}}
+                }
             }
-        })
+        )
         assert _extract_reaction_target_ts(raw) == 67890
 
     def test_none_input(self):
@@ -538,6 +578,7 @@ class TestExtractReactionTargetTs:
 # ---------------------------------------------------------------------------
 # HelpCommand
 # ---------------------------------------------------------------------------
+
 
 class TestHelpCommand:
     async def test_sends_help_text(self, mock_context):

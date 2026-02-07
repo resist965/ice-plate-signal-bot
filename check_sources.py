@@ -14,13 +14,13 @@ import sys
 
 from lookup import LookupResult, check_plate, close_session, fetch_descriptions
 from lookup_defrost import (
+    check_plate_defrost,
     clear_caches,
     fetch_all_pages,
     fetch_meta,
+    fetch_with_retry,
     get_decrypt_key,
     get_defrost_url,
-    check_plate_defrost,
-    fetch_with_retry,
 )
 
 # Terminal colors
@@ -173,13 +173,20 @@ async def check_defrost_full_lookup(plate: str) -> bool | None:
     if result.error:
         return _fail(label, f"Error: {result.error}")
     if result.found:
-        return _pass(label, f"Found: {result.match_count} match(es), {len(result.sightings)} sighting(s)")
+        return _pass(
+            label, f"Found: {result.match_count} match(es), {len(result.sightings)} sighting(s)"
+        )
     return _pass(label, f"Plate {plate!r} not in defrost (not an error)")
 
 
 async def main() -> int:
     parser = argparse.ArgumentParser(description="Health-check for live data sources")
-    parser.add_argument("plate", nargs="?", default=None, help="Known plate to check (overrides CHECK_PLATE env var)")
+    parser.add_argument(
+        "plate",
+        nargs="?",
+        default=None,
+        help="Known plate to check (overrides CHECK_PLATE env var)",
+    )
     args = parser.parse_args()
 
     plate = args.plate or os.environ.get("CHECK_PLATE", "")

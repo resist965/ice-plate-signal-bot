@@ -2,13 +2,14 @@
 
 import asyncio
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 
 import aiohttp
 from bs4 import BeautifulSoup
 
-BASE_URL = "https://www.stopice.net/platetracker/index.cgi"
+BASE_URL = os.environ.get("STOPICE_URL", "https://www.stopice.net/platetracker/index.cgi")
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible)"}
 TIMEOUT = aiohttp.ClientTimeout(total=15)
 
@@ -90,7 +91,9 @@ async def check_plate(plate: str) -> LookupResult:
     Returns a LookupResult with match info and sighting details.
     """
     html, error = await fetch_with_retry(
-        "POST", BASE_URL, data={"search": "1", "keywords": plate},
+        "POST",
+        BASE_URL,
+        data={"search": "1", "keywords": plate},
     )
     if error:
         return LookupResult(found=False, error=error)
@@ -114,7 +117,9 @@ async def check_plate(plate: str) -> LookupResult:
 async def fetch_descriptions(plate: str) -> LookupResult:
     """Fetch the detail page for a plate and return a LookupResult with full sighting records."""
     html, error = await fetch_with_retry(
-        "GET", BASE_URL, params={"plate": plate},
+        "GET",
+        BASE_URL,
+        params={"plate": plate},
     )
     if error:
         return LookupResult(found=False, error=error)
@@ -179,11 +184,13 @@ def _parse_search_results_from_html(html: str) -> list[Sighting]:
                 description = text
 
         if date_text:
-            sightings.append(Sighting(
-                date=date_text,
-                location=location,
-                description=description,
-            ))
+            sightings.append(
+                Sighting(
+                    date=date_text,
+                    location=location,
+                    description=description,
+                )
+            )
 
     return sightings
 
@@ -206,7 +213,7 @@ def _parse_detail_page(html: str) -> list[Sighting]:
 
     Each record block has:
     - Date: <font style="font-size:18pt;" color="#555"><b>DATE</b>
-    - Location: <font color="red">LOCATION (filter out × close buttons)
+    - Location: <font color="red">LOCATION (filter out close buttons)
     - Vehicle: in a Table cell before the "created:"/"added:" timestamp
     - Description: <font style="font-size:14pt;">TEXT
     """
@@ -214,14 +221,13 @@ def _parse_detail_page(html: str) -> list[Sighting]:
     sightings = []
 
     # Dates: font with 18pt and color #555
-    date_fonts = soup.find_all(
-        "font", style=re.compile(r"font-size:18pt"), color="#555"
-    )
+    date_fonts = soup.find_all("font", style=re.compile(r"font-size:18pt"), color="#555")
 
-    # Locations: font color=red, excluding close-button × characters
+    # Locations: font color=red, excluding close-button characters
     location_fonts = [
-        f for f in soup.find_all("font", color="red")
-        if f.get_text(strip=True) not in ("×", "")
+        f
+        for f in soup.find_all("font", color="red")
+        if f.get_text(strip=True) not in ("\u00d7", "")
     ]
 
     # Descriptions: font 14pt — skip non-description entries (modals etc.)
@@ -244,9 +250,9 @@ def _parse_detail_page(html: str) -> list[Sighting]:
             direct_text = f.find(string=True, recursive=False)
             direct_text = direct_text.strip() if direct_text else ""
             if direct_text.startswith("created:"):
-                time_texts.append(direct_text[len("created:"):].strip())
+                time_texts.append(direct_text[len("created:") :].strip())
             elif direct_text.startswith("added:"):
-                time_texts.append(direct_text[len("added:"):].strip())
+                time_texts.append(direct_text[len("added:") :].strip())
             else:
                 time_texts.append("")
             parent_table = f.find_parent("table", cellpadding="0")
@@ -265,12 +271,14 @@ def _parse_detail_page(html: str) -> list[Sighting]:
         description = desc_fonts[i].get_text(strip=True) if i < len(desc_fonts) else ""
         vehicle = vehicle_texts[i] if i < len(vehicle_texts) else ""
 
-        sightings.append(Sighting(
-            date=date_text,
-            location=location,
-            vehicle=vehicle,
-            description=description,
-            time=time_texts[i] if i < len(time_texts) else "",
-        ))
+        sightings.append(
+            Sighting(
+                date=date_text,
+                location=location,
+                vehicle=vehicle,
+                description=description,
+                time=time_texts[i] if i < len(time_texts) else "",
+            )
+        )
 
     return sightings

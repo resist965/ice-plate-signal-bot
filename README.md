@@ -2,12 +2,15 @@
 
 A Signal bot that checks license plates against the [stopice.net](https://www.stopice.net) and [defrostmn.net](https://defrostmn.net) databases. Designed to run in a Signal group chat — send `/plate ABC1234` or send `/plate` with a photo of a license plate and the bot will look up the plate across both sources concurrently.
 
-## Privacy
+## Privacy & Security
 
 - **No logging in production** — `DEBUG=false` (default) disables all console and file logging
+- **No secrets logged** — even with `DEBUG=true`, sensitive values like `DEFROST_DECRYPT_KEY` are never written to logs
 - **Minimal data storage** — optional disk cache (`CACHE_DIR`) stores only defrostmn.net plate data to avoid re-downloading on restart; disabled by default
 - **No plate persistence** — queried plate numbers are not stored beyond the request lifecycle
 - **Generic User-Agent** — HTTP requests to the lookup services do not identify this bot
+- **Non-root container** — the Docker image runs as an unprivileged user (`botuser`)
+- **Decryption key isolation** — the `DEFROST_DECRYPT_KEY` value never leaves the server; it is only used in-memory for decryption
 
 ## Prerequisites
 
@@ -18,7 +21,7 @@ A Signal bot that checks license plates against the [stopice.net](https://www.st
 
 1. Clone the repository:
    ```
-   git clone https://github.com/resist965/ice-plate-signal-bot.git
+   git clone https://github.com/YOUR_USER/ice-plate-signal-bot.git
    cd ice-plate-signal-bot
    ```
 
@@ -29,25 +32,39 @@ A Signal bot that checks license plates against the [stopice.net](https://www.st
 
    Edit `.env`:
    - `PHONE_NUMBER` — the phone number for the bot's Signal account
-   - `SIGNAL_GROUP` — the name or ID of the group the bot should respond in
+   - `SIGNAL_GROUP` — the external group ID (see step 6 below)
    - `SIGNAL_SERVICE` — signal-cli-rest-api address (default: `localhost:8080`)
    - `DEBUG` — set to `true` for development logging, `false` (default) for silent operation
    - `DEFROST_DECRYPT_KEY` — passphrase for decrypting defrostmn.net paginated plate data (optional; paginated lookups disabled if unset)
    - `DEFROST_JSON_URL` — URL of the defrostmn.net stopice snapshot JSON file (optional; stopice fallback disabled if unset)
    - `CHECK_PLATE` — plate known to exist in stopice.net, used by `check_sources.py` (also accepted as a CLI arg)
    - `CACHE_DIR` — directory for persisting defrostmn.net caches to disk (optional; disabled if unset). Docker-compose sets this to `/app/cache` automatically.
+   - `STOPICE_URL` — URL for stopice.net plate tracker (default provided; override if the site changes paths)
+   - `DEFROST_DATA_URL` — base URL for defrostmn.net plate data (default provided; override if the site changes paths)
+   - `SIGNAL_API_PORT` — host port for the signal-cli-rest-api container (default: `8080`). Change this if port 8080 is already in use on your machine.
 
 3. Start the services:
    ```
    docker compose up -d
    ```
 
-4. Link the Signal account by scanning the QR code:
+4. Link the Signal account by scanning the QR code. Open this URL in a browser (replace `8080` with your `SIGNAL_API_PORT` if you changed it):
    ```
    http://localhost:8080/v1/qrcodelink?device_name=bot
    ```
+   If the page doesn't load, wait a minute or two — signal-cli-rest-api takes some time to start up (the health check allows up to ~2 minutes).
 
-5. Restart the bot service after linking:
+5. Add the bot's phone number to the target Signal group from your personal Signal app.
+
+6. Get the group ID by querying signal-cli-rest-api (replace `+1234567890` with your bot's phone number):
+   ```
+   curl http://localhost:8080/v1/groups/+1234567890
+   ```
+   Find your group in the JSON response and copy the `id` field — this is the **external** group ID (starts with `group.`). Do **not** use `internal_id`.
+
+7. Set `SIGNAL_GROUP` in your `.env` to the group ID from step 6.
+
+8. Restart the bot:
    ```
    docker compose restart bot
    ```
@@ -64,13 +81,22 @@ When a match is found, the bot replies with a per-source summary (match/no match
 
 The bot only responds in the configured group — it ignores DMs and other groups.
 
+## Image OCR
+
+Send `/plate` with an image attachment (no text needed) to have the bot read the plate automatically:
+
+- Uses YOLO-based plate detection + CCT OCR via [fast-alpr](https://github.com/ankandrew/fast-alpr)
+- Works best with clear, well-lit photos; supports both full vehicle photos and cropped plate images
+- The bot confirms the detected plate (e.g. "Detected plate: ABC123") before running the lookup
+- When both text and an image are provided, text input takes priority
+
 ## Architecture
 
 - `bot.py` — Entrypoint: loads config from env, registers commands, starts the Signal bot
 - `commands/plate.py` — `/plate` command handler and 👀 reaction handler for detail lookups
 - `commands/help.py` — `/help` command
 - `lookup.py` — stopice.net lookup: HTTP requests and HTML parsing
-- `lookup_defrost.py` — defrostmn.net lookup: paginated encrypted plates + legacy stopice snapshot
+- `lookup_defrost.py` — defrostmn.net lookup: paginated plates + legacy stopice snapshot
 - `ocr.py` — License plate OCR: ALPR-based plate detection and reading (fast-alpr)
 - `check_sources.py` — Health-check script for live data sources
 
@@ -80,7 +106,7 @@ The bot only responds in the configured group — it ignores DMs and other group
    - *Image path*: decodes the attached image, runs ALPR (YOLO plate detection + CCT OCR) to extract the plate text, then proceeds with the same lookup flow
    - **stopice.net**: POST to search endpoint → regex-based parsing of the (malformed) HTML results page
    - **defrostmn.net**: searches two sub-sources in parallel and merges results:
-     - *Paginated encrypted plates* — fetches metadata, decrypts AES-256-GCM pages, exact match (cached until data changes)
+     - *Paginated plates* — fetches metadata, exact match (cached until data changes)
      - *Stopice snapshot* — fetches legacy JSON, exact match (cached for 3 hours)
 2. Bot replies with per-source results (match/no match/error for each)
 3. 👀 reaction on the reply → fetches details from matched sources only
@@ -89,7 +115,7 @@ The bot only responds in the configured group — it ignores DMs and other group
 
 ## Health Check
 
-`check_sources.py` makes live requests to stopice.net and defrostmn.net, exercises the existing parsing and decryption code, and validates that the data structure hasn't changed. Run it to verify that the bot's lookup sources are reachable and returning well-formed data.
+`check_sources.py` makes live requests to stopice.net and defrostmn.net, exercises the existing parsing code, and validates that the data structure hasn't changed. Run it to verify that the bot's lookup sources are reachable and returning well-formed data.
 
 ```
 # With a known stopice plate:
@@ -122,7 +148,7 @@ pytest -v
 pytest --cov=. --cov-report=term-missing
 ```
 
-228 tests covering parsers, async HTTP retry logic, encrypted page decryption, caching, JSON lookup, command handlers, OCR pipeline, formatting helpers, bot configuration, and health-check script orchestration.
+228 tests covering parsers, async HTTP retry logic, paginated page decryption, caching, JSON lookup, command handlers, OCR pipeline, formatting helpers, bot configuration, and health-check script orchestration.
 
 Tests use saved HTML/JSON snapshots in `html_snapshots/` and mock all HTTP requests — no live requests to external services are made during testing.
 
@@ -141,6 +167,49 @@ export DEBUG=true
 python bot.py
 ```
 
+## Contributing
+
+- **Tests required** — all changes must include tests. Run `pytest -v` before submitting.
+- **Test approach** — use saved HTML/JSON snapshots in `html_snapshots/` and mock all HTTP requests. No live requests to external services.
+- **Code style** — enforced by [ruff](https://github.com/astral-sh/ruff). Run `ruff check .` and `ruff format --check .` before submitting, or install the pre-commit hook: `pip install pre-commit && pre-commit install`.
+- **Branches** — feature branches off `main`; PRs target `main`.
+- **Commits** — concise, descriptive commit messages focused on "why" not "what".
+
+## Troubleshooting
+
+**Bot not responding in the group**
+- Set `DEBUG=true` in `.env` and restart (`docker compose restart bot`) to see log output with `docker compose logs bot`
+- Verify `SIGNAL_GROUP` is the external group ID (starts with `group.`), not the `internal_id`
+- Confirm the bot's phone number has been added to the Signal group
+- Make sure the Signal account is linked (re-scan the QR code if needed)
+
+**QR code page not loading**
+- signal-cli-rest-api can take up to ~2 minutes to start. Wait and refresh.
+- Check that the host port isn't in use: `SIGNAL_API_PORT` in `.env` defaults to 8080
+
+**OCR not detecting plates**
+- Works best with clear, well-lit photos where the plate is readable
+- Supports both full vehicle photos and cropped plate images
+- Very blurry, dark, or angled images may not produce results
+
 ## License
 
 AGPLv3 — see [LICENSE](LICENSE).
+
+## Acknowledgements
+
+### Data sources
+
+- [stopice.net](https://www.stopice.net) — primary ICE vehicle plate database
+- [defrostmn.net](https://defrostmn.net) — Minnesota-focused ICE vehicle tracking with plate data
+
+### Key libraries
+
+- [signalbot](https://github.com/signalbot-org/signalbot) — Signal bot framework (MIT)
+- [fast-alpr](https://github.com/ankandrew/fast-alpr) — license plate detection and OCR (MIT)
+- [aiohttp](https://github.com/aio-libs/aiohttp) — async HTTP client (Apache-2.0)
+- [beautifulsoup4](https://www.crummy.com/software/BeautifulSoup/) — HTML parsing (MIT)
+- [cryptography](https://github.com/pyca/cryptography) — decryption (Apache-2.0 / BSD-3-Clause)
+- [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) — REST API wrapper for Signal
+
+All dependencies use permissive licenses (MIT, Apache-2.0, BSD-3-Clause) that are fully compatible with this project's AGPLv3 license.

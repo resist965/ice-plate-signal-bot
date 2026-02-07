@@ -5,10 +5,10 @@ import os
 import pathlib
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import cv2
 import numpy as np
+import pytest
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 import lookup
 import lookup_defrost
@@ -65,6 +65,7 @@ def mock_context():
         ctx.message.raw_message = raw_message
         ctx.message.base64_attachments = base64_attachments or []
         return ctx
+
     return _factory
 
 
@@ -134,5 +135,3 @@ def _make_image_base64(text=None, size=(200, 60)):
 def plate_image_base64():
     """Synthetic license plate image with text 'ABC1234'."""
     return _make_image_base64("ABC1234")
-
-

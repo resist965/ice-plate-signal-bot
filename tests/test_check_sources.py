@@ -3,23 +3,21 @@
 import json
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
-from lookup import LookupResult, Sighting
 from check_sources import (
-    check_stopice_search,
-    check_stopice_detail,
+    check_defrost_full_lookup,
     check_defrost_meta,
     check_defrost_pages,
     check_defrost_stopice_json,
-    check_defrost_full_lookup,
+    check_stopice_detail,
+    check_stopice_search,
     main,
 )
-
+from lookup import LookupResult, Sighting
 
 # ---------------------------------------------------------------------------
 # main() — argument parsing and exit codes
 # ---------------------------------------------------------------------------
+
 
 class TestMain:
     @patch("check_sources.close_session", new_callable=AsyncMock)
@@ -77,8 +75,10 @@ class TestMain:
     @patch("check_sources.check_stopice_detail", new_callable=AsyncMock, return_value=True)
     @patch("check_sources.check_stopice_search", new_callable=AsyncMock, return_value=True)
     async def test_env_var_fallback(self, *_mocks):
-        with patch("sys.argv", ["check_sources.py"]), \
-             patch.dict("os.environ", {"CHECK_PLATE": "XYZ789"}):
+        with (
+            patch("sys.argv", ["check_sources.py"]),
+            patch.dict("os.environ", {"CHECK_PLATE": "XYZ789"}),
+        ):
             result = await main()
         assert result == 0
 
@@ -100,11 +100,13 @@ class TestMain:
 # check_stopice_search
 # ---------------------------------------------------------------------------
 
+
 class TestCheckStopiceSearch:
     @patch("check_sources.check_plate", new_callable=AsyncMock)
     async def test_pass(self, mock_cp):
         mock_cp.return_value = LookupResult(
-            found=True, match_count=1,
+            found=True,
+            match_count=1,
             sightings=[Sighting(date="Jan 1", location="A")],
         )
         assert await check_stopice_search("TEST") is True
@@ -122,7 +124,8 @@ class TestCheckStopiceSearch:
     @patch("check_sources.check_plate", new_callable=AsyncMock)
     async def test_fail_missing_date(self, mock_cp):
         mock_cp.return_value = LookupResult(
-            found=True, match_count=1,
+            found=True,
+            match_count=1,
             sightings=[Sighting(date="", location="A")],
         )
         assert await check_stopice_search("TEST") is False
@@ -136,6 +139,7 @@ class TestCheckStopiceSearch:
 # ---------------------------------------------------------------------------
 # check_stopice_detail
 # ---------------------------------------------------------------------------
+
 
 class TestCheckStopiceDetail:
     @patch("check_sources.fetch_descriptions", new_callable=AsyncMock)
@@ -171,6 +175,7 @@ class TestCheckStopiceDetail:
 # ---------------------------------------------------------------------------
 # check_defrost_meta
 # ---------------------------------------------------------------------------
+
 
 class TestCheckDefrostMeta:
     @patch("check_sources.fetch_meta", new_callable=AsyncMock)
@@ -211,6 +216,7 @@ class TestCheckDefrostMeta:
 # ---------------------------------------------------------------------------
 # check_defrost_pages
 # ---------------------------------------------------------------------------
+
 
 class TestCheckDefrostPages:
     @patch("check_sources.fetch_all_pages", new_callable=AsyncMock)
@@ -255,6 +261,7 @@ class TestCheckDefrostPages:
 # check_defrost_stopice_json
 # ---------------------------------------------------------------------------
 
+
 class TestCheckDefrostStopiceJson:
     @patch("check_sources.fetch_with_retry", new_callable=AsyncMock)
     @patch("check_sources.get_defrost_url", return_value="https://example.com/plates.json")
@@ -291,13 +298,15 @@ class TestCheckDefrostStopiceJson:
 # check_defrost_full_lookup
 # ---------------------------------------------------------------------------
 
+
 class TestCheckDefrostFullLookup:
     @patch("check_sources.check_plate_defrost", new_callable=AsyncMock)
     @patch("check_sources.get_defrost_url", return_value="")
     @patch("check_sources.get_decrypt_key", return_value="testkey")
     async def test_pass_found(self, _key, _url, mock_cpd):
         mock_cpd.return_value = LookupResult(
-            found=True, match_count=1,
+            found=True,
+            match_count=1,
             sightings=[Sighting(date="Jan 1", location="A")],
         )
         assert await check_defrost_full_lookup("TEST") is True

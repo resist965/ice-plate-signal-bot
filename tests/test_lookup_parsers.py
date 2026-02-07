@@ -1,16 +1,15 @@
 """Tests for the pure parsing functions in lookup.py."""
 
 from lookup import (
-    Sighting,
     _extract_record_count,
     _parse_detail_page,
     _parse_search_results_from_html,
 )
 
-
 # ---------------------------------------------------------------------------
 # _parse_search_results_from_html
 # ---------------------------------------------------------------------------
+
 
 class TestParseSearchResults:
     def test_match_returns_one_sighting(self, html_search_match):
@@ -38,18 +37,18 @@ class TestParseSearchResults:
 
     def test_multiple_date_blocks(self):
         html = (
-            '<font style=font-size:9pt; color=#c0c0c0>\n'
-            'MON FEB 1 2026 10:00:00 PST\n'
-            '<tr></td><td>\n'
-            '<img src=mapmarker.png width=15> CITY A\n'
-            '<font style=font-size:9pt;>\nDesc A\n'
-            '<!--SPLIT-->'
-            '<font style=font-size:9pt; color=#c0c0c0>\n'
-            'TUE FEB 2 2026 11:00:00 PST\n'
-            '<tr></td><td>\n'
-            '<img src=mapmarker.png width=15> CITY B\n'
-            '<font style=font-size:9pt;>\nDesc B\n'
-            '<!--RESULT:2-->'
+            "<font style=font-size:9pt; color=#c0c0c0>\n"
+            "MON FEB 1 2026 10:00:00 PST\n"
+            "<tr></td><td>\n"
+            "<img src=mapmarker.png width=15> CITY A\n"
+            "<font style=font-size:9pt;>\nDesc A\n"
+            "<!--SPLIT-->"
+            "<font style=font-size:9pt; color=#c0c0c0>\n"
+            "TUE FEB 2 2026 11:00:00 PST\n"
+            "<tr></td><td>\n"
+            "<img src=mapmarker.png width=15> CITY B\n"
+            "<font style=font-size:9pt;>\nDesc B\n"
+            "<!--RESULT:2-->"
         )
         sightings = _parse_search_results_from_html(html)
         assert len(sightings) == 2
@@ -70,6 +69,7 @@ class TestParseSearchResults:
 # _parse_detail_page
 # ---------------------------------------------------------------------------
 
+
 class TestParseDetailPage:
     def test_returns_sightings(self, html_detail_page):
         sightings = _parse_detail_page(html_detail_page)
@@ -88,7 +88,7 @@ class TestParseDetailPage:
     def test_close_button_not_in_location(self, html_detail_page):
         sightings = _parse_detail_page(html_detail_page)
         for s in sightings:
-            assert "\u00d7" not in s.location  # ×
+            assert "\u00d7" not in s.location  # multiplication sign
 
     def test_unconfirmed_not_in_description(self, html_detail_page):
         sightings = _parse_detail_page(html_detail_page)
@@ -136,19 +136,20 @@ class TestParseDetailPage:
 # _extract_record_count
 # ---------------------------------------------------------------------------
 
+
 class TestExtractRecordCount:
     def test_more_records_present(self):
-        html = '<table>2  more records</table>'
+        html = "<table>2  more records</table>"
         assert _extract_record_count(html, shown=1) == 3
 
     def test_no_more_records(self):
-        html = '<table>some other text</table>'
+        html = "<table>some other text</table>"
         assert _extract_record_count(html, shown=1) == 1
 
     def test_case_insensitive(self):
-        html = '<table>5 More Records</table>'
+        html = "<table>5 More Records</table>"
         assert _extract_record_count(html, shown=1) == 6
 
     def test_zero_shown_with_more(self):
-        html = '<table>10 more records</table>'
+        html = "<table>10 more records</table>"
         assert _extract_record_count(html, shown=0) == 10

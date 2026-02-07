@@ -20,7 +20,7 @@ from lookup import LookupResult, Sighting, fetch_with_retry
 
 logger = logging.getLogger(__name__)
 
-_DEFROST_DATA_BASE = "https://defrostmn.net/data/plates"
+_DEFROST_DATA_BASE = os.environ.get("DEFROST_DATA_URL", "https://defrostmn.net/data/plates")
 _STOPICE_CACHE_TTL = 3 * 3600  # 3 hours
 _MAX_CONCURRENT_PAGES = 10
 
@@ -244,13 +244,15 @@ def _search_stopice_plates(plates_list: list[dict], plate: str) -> LookupResult:
             records = entry.get("records", [])
             sightings = []
             for rec in records:
-                sightings.append(Sighting(
-                    date=_format_date(rec),
-                    location=rec.get("address", ""),
-                    vehicle=rec.get("vehicle_make", ""),
-                    description=rec.get("comments", ""),
-                    time=rec.get("datestamp", ""),
-                ))
+                sightings.append(
+                    Sighting(
+                        date=_format_date(rec),
+                        location=rec.get("address", ""),
+                        vehicle=rec.get("vehicle_make", ""),
+                        description=rec.get("comments", ""),
+                        time=rec.get("datestamp", ""),
+                    )
+                )
             return LookupResult(
                 found=True,
                 match_count=1,
@@ -334,9 +336,12 @@ async def _check_stopice_fallback(plate: str) -> LookupResult:
             logger.info("Loaded stopice cache from disk")
 
     now = time.time()
-    if _stopice_cache is not None and _stopice_cache_time is not None:
-        if now - _stopice_cache_time < _STOPICE_CACHE_TTL:
-            return _search_stopice_plates(_stopice_cache, plate)
+    if (
+        _stopice_cache is not None
+        and _stopice_cache_time is not None
+        and now - _stopice_cache_time < _STOPICE_CACHE_TTL
+    ):
+        return _search_stopice_plates(_stopice_cache, plate)
 
     body, error = await fetch_with_retry("GET", url)
     if error:

@@ -97,8 +97,8 @@ async def extract_plate_from_image(base64_data: str) -> str:
             asyncio.to_thread(_extract_plate_text, frame),
             timeout=_ALPR_TIMEOUT,
         )
-    except asyncio.TimeoutError:
-        raise OCRError("Plate detection timed out. Try a clearer or smaller image.")
+    except asyncio.TimeoutError as exc:
+        raise OCRError("Plate detection timed out. Try a clearer or smaller image.") from exc
     except OCRError:
         raise
     except Exception as exc:
