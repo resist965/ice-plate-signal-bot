@@ -21,7 +21,7 @@ A Signal bot that checks license plates against the [stopice.net](https://www.st
 
 1. Clone the repository:
    ```
-   git clone https://github.com/YOUR_USER/ice-plate-signal-bot.git
+   git clone https://github.com/resist965/ice-plate-signal-bot.git
    cd ice-plate-signal-bot
    ```
 
