@@ -81,7 +81,7 @@ class TestBotConfig:
         bot_module.main()
 
         register_calls = mock_bot.register.call_args_list
-        assert len(register_calls) == 3
+        assert len(register_calls) == 4
         for call in register_calls:
             assert call.kwargs.get("contacts") is False
             assert call.kwargs.get("groups") == ["grp1"]
@@ -163,3 +163,17 @@ class TestBotConfig:
         mock_detail_cls.return_value = mock_detail
         bot_module.main()
         mock_detail.set_plate_command.assert_called_once()
+
+    @patch.dict(
+        "os.environ",
+        {"PHONE_NUMBER": "+15551234567", "SIGNAL_GROUP": "grp1"},
+        clear=True,
+    )
+    @patch("bot.SignalBot")
+    @patch("bot.VoicePlateCommand")
+    def test_voice_cmd_linked_to_plate_cmd(self, mock_voice_cls, mock_bot_cls):
+        mock_bot_cls.return_value = MagicMock()
+        mock_voice = MagicMock()
+        mock_voice_cls.return_value = mock_voice
+        bot_module.main()
+        mock_voice.set_plate_command.assert_called_once()

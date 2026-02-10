@@ -9,10 +9,48 @@ from signalbot import Command, Context, regex_triggered
 from lookup import BASE_URL, LookupResult, Sighting, check_plate, fetch_descriptions
 from lookup_defrost import check_plate_defrost
 from ocr import OCRError, extract_plate_from_image
+from stt import STTError, extract_plate_from_voice
 
 logger = logging.getLogger(__name__)
 
 _PENDING_TTL = 3600  # 1 hour
+
+
+async def _lookup_and_reply(
+    c: Context,
+    raw_plate: str,
+    pending: dict[int, tuple[str, float, set[str]]],
+) -> None:
+    """Run plate lookup against all sources and send the result summary.
+
+    Shared by PlateCommand (text/image) and VoicePlateCommand (voice).
+    """
+    if not raw_plate or not re.match(r"^[A-Z0-9 \-]+$", raw_plate):
+        await c.send("Invalid plate format. Use letters, numbers, spaces, or hyphens.")
+        return
+
+    stopice_result, defrost_result = await asyncio.gather(
+        check_plate(raw_plate),
+        check_plate_defrost(raw_plate),
+    )
+
+    lines: list[str] = []
+    sources_with_matches: set[str] = set()
+
+    lines.append(_format_source_result("stopice.net", stopice_result))
+    if stopice_result.found:
+        sources_with_matches.add("stopice")
+
+    lines.append(_format_source_result("defrostmn.net", defrost_result))
+    if defrost_result.found:
+        sources_with_matches.add("defrost")
+
+    if sources_with_matches:
+        lines.append("\nReact \U0001f440 to this message for full descriptions.")
+        ts = await c.reply("\n".join(lines))
+        pending[ts] = (raw_plate, time.time(), sources_with_matches)
+    else:
+        await c.reply("\n".join(lines))
 
 
 class PlateCommand(Command):
@@ -68,34 +106,7 @@ class PlateCommand(Command):
             await c.send("Usage: /plate ABC123 or send /plate with an image of a license plate.")
             return
 
-        if not raw_plate or not re.match(r"^[A-Z0-9 \-]+$", raw_plate):
-            await c.send("Invalid plate format. Use letters, numbers, spaces, or hyphens.")
-            return
-
-        stopice_result, defrost_result = await asyncio.gather(
-            check_plate(raw_plate),
-            check_plate_defrost(raw_plate),
-        )
-
-        lines = []
-        sources_with_matches: set[str] = set()
-
-        # Format stopice.net result
-        lines.append(_format_source_result("stopice.net", stopice_result))
-        if stopice_result.found:
-            sources_with_matches.add("stopice")
-
-        # Format defrostmn.net result
-        lines.append(_format_source_result("defrostmn.net", defrost_result))
-        if defrost_result.found:
-            sources_with_matches.add("defrost")
-
-        if sources_with_matches:
-            lines.append("\nReact \U0001f440 to this message for full descriptions.")
-            ts = await c.reply("\n".join(lines))
-            self._pending[ts] = (raw_plate, time.time(), sources_with_matches)
-        else:
-            await c.reply("\n".join(lines))
+        await _lookup_and_reply(c, raw_plate, self._pending)
 
 
 class PlateDetailCommand(Command):
@@ -226,3 +237,70 @@ def _extract_reaction_target_ts(raw_message: str | None) -> int | None:
     except (json.JSONDecodeError, TypeError, ValueError):
         pass
     return None
+
+
+def _is_voice_message(raw_message: str | None) -> bool:
+    """Check if a Signal message contains a voice note attachment.
+
+    Parses raw_message JSON looking for attachments under dataMessage or
+    syncMessage.sentMessage.  Per attachment:
+    - voiceNote is True  -> voice message
+    - voiceNote is False -> skip (audio files explicitly not voice)
+    - voiceNote absent   -> fall back to audio/* contentType check
+    """
+    if not raw_message:
+        return False
+    try:
+        data = json.loads(raw_message)
+        envelope = data.get("envelope", data)
+        for path in (("dataMessage",), ("syncMessage", "sentMessage")):
+            obj = envelope
+            for key in path:
+                obj = obj.get(key, {})
+            attachments = obj.get("attachments", [])
+            for att in attachments:
+                if att.get("voiceNote") is True:
+                    return True
+                if att.get("voiceNote") is False:
+                    continue
+                ct = att.get("contentType", "")
+                if ct.startswith("audio/"):
+                    return True
+    except (json.JSONDecodeError, TypeError, ValueError):
+        logger.debug("Failed to parse raw_message for voice detection")
+    return False
+
+
+class VoicePlateCommand(Command):
+    """Auto-detect voice messages and look up any spoken plate number."""
+
+    def setup(self) -> None:
+        self._plate_cmd: PlateCommand | None = None
+
+    def set_plate_command(self, plate_cmd: PlateCommand) -> None:
+        self._plate_cmd = plate_cmd
+
+    async def handle(self, c: Context) -> None:
+        if not _is_voice_message(c.message.raw_message):
+            return
+        if not c.message.base64_attachments:
+            return
+        if not self._plate_cmd:
+            logger.warning("VoicePlateCommand has no plate_cmd set, ignoring voice message")
+            return
+
+        self._plate_cmd._cleanup_pending()
+        await c.react("\U0001f3a4")  # 🎤
+
+        try:
+            raw_plate = await extract_plate_from_voice(c.message.base64_attachments[0])
+        except STTError as e:
+            await c.send(f"Could not read plate from voice message: {e}")
+            return
+        except Exception:
+            logger.exception("Unexpected error during voice processing")
+            await c.send("Could not read plate from voice message: an unexpected error occurred.")
+            return
+
+        await c.send(f"Detected plate: {raw_plate} — searching now...")
+        await _lookup_and_reply(c, raw_plate, self._plate_cmd._pending)

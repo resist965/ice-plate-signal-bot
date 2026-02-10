@@ -8,11 +8,14 @@ from commands.help import HELP_TEXT, HelpCommand
 from commands.plate import (
     PlateCommand,
     PlateDetailCommand,
+    VoicePlateCommand,
     _extract_reaction_target_ts,
     _format_source_result,
+    _is_voice_message,
 )
 from lookup import LookupResult, Sighting
 from ocr import OCRError
+from stt import STTError
 
 # ---------------------------------------------------------------------------
 # PlateCommand — pending state
@@ -586,3 +589,217 @@ class TestHelpCommand:
         cmd = HelpCommand.__new__(HelpCommand)
         await cmd.handle(ctx)
         ctx.send.assert_called_once_with(HELP_TEXT)
+
+    async def test_help_mentions_voice(self, mock_context):
+        assert "voice" in HELP_TEXT.lower() or "Voice" in HELP_TEXT
+
+
+# ---------------------------------------------------------------------------
+# _is_voice_message
+# ---------------------------------------------------------------------------
+
+
+class TestIsVoiceMessage:
+    def test_voice_note_flag(self):
+        raw = json.dumps(
+            {
+                "envelope": {
+                    "dataMessage": {
+                        "attachments": [{"contentType": "audio/aac", "voiceNote": True}]
+                    }
+                }
+            }
+        )
+        assert _is_voice_message(raw) is True
+
+    def test_audio_content_type_without_voice_note(self):
+        raw = json.dumps(
+            {"envelope": {"dataMessage": {"attachments": [{"contentType": "audio/ogg"}]}}}
+        )
+        assert _is_voice_message(raw) is True
+
+    def test_image_attachment_not_voice(self):
+        raw = json.dumps(
+            {"envelope": {"dataMessage": {"attachments": [{"contentType": "image/jpeg"}]}}}
+        )
+        assert _is_voice_message(raw) is False
+
+    def test_no_attachments(self):
+        raw = json.dumps({"envelope": {"dataMessage": {"body": "hello"}}})
+        assert _is_voice_message(raw) is False
+
+    def test_none_raw_message(self):
+        assert _is_voice_message(None) is False
+
+    def test_invalid_json(self):
+        assert _is_voice_message("not json") is False
+
+    def test_sync_message_path(self):
+        raw = json.dumps(
+            {
+                "envelope": {
+                    "syncMessage": {
+                        "sentMessage": {
+                            "attachments": [{"contentType": "audio/aac", "voiceNote": True}]
+                        }
+                    }
+                }
+            }
+        )
+        assert _is_voice_message(raw) is True
+
+    def test_empty_attachments(self):
+        raw = json.dumps({"envelope": {"dataMessage": {"attachments": []}}})
+        assert _is_voice_message(raw) is False
+
+    def test_voice_note_false_with_audio_type_not_voice(self):
+        """Audio attachment with voiceNote explicitly False is not a voice message."""
+        raw = json.dumps(
+            {
+                "envelope": {
+                    "dataMessage": {
+                        "attachments": [{"contentType": "audio/mpeg", "voiceNote": False}]
+                    }
+                }
+            }
+        )
+        assert _is_voice_message(raw) is False
+
+
+# ---------------------------------------------------------------------------
+# VoicePlateCommand.handle()
+# ---------------------------------------------------------------------------
+
+
+class TestVoicePlateCommandHandle:
+    def _make_voice_cmd(self, plate_cmd=None):
+        cmd = VoicePlateCommand.__new__(VoicePlateCommand)
+        cmd.setup()
+        if plate_cmd:
+            cmd.set_plate_command(plate_cmd)
+        return cmd
+
+    def _make_plate_cmd(self):
+        cmd = PlateCommand.__new__(PlateCommand)
+        cmd.setup()
+        return cmd
+
+    def _voice_raw(self):
+        return json.dumps(
+            {
+                "envelope": {
+                    "dataMessage": {
+                        "attachments": [{"contentType": "audio/aac", "voiceNote": True}]
+                    }
+                }
+            }
+        )
+
+    async def test_non_voice_message_returns_early(self, mock_context):
+        plate_cmd = self._make_plate_cmd()
+        voice_cmd = self._make_voice_cmd(plate_cmd)
+        raw = json.dumps(
+            {"envelope": {"dataMessage": {"attachments": [{"contentType": "image/jpeg"}]}}}
+        )
+        ctx = mock_context(raw_message=raw, base64_attachments=["aW1hZ2VkYXRh"])
+        await voice_cmd.handle(ctx)
+        ctx.react.assert_not_called()
+
+    async def test_no_plate_cmd_returns_early(self, mock_context):
+        voice_cmd = self._make_voice_cmd()
+        ctx = mock_context(raw_message=self._voice_raw(), base64_attachments=["YXVkaW8="])
+        await voice_cmd.handle(ctx)
+        ctx.react.assert_not_called()
+
+    async def test_no_attachment_data_returns_early(self, mock_context):
+        plate_cmd = self._make_plate_cmd()
+        voice_cmd = self._make_voice_cmd(plate_cmd)
+        ctx = mock_context(raw_message=self._voice_raw(), base64_attachments=[])
+        await voice_cmd.handle(ctx)
+        ctx.react.assert_not_called()
+
+    @patch("commands.plate.check_plate_defrost")
+    @patch("commands.plate.check_plate")
+    @patch("commands.plate.extract_plate_from_voice")
+    async def test_voice_triggers_lookup(self, mock_stt, mock_check, mock_defrost, mock_context):
+        mock_stt.return_value = "ABC123"
+        mock_check.return_value = LookupResult(found=False)
+        mock_defrost.return_value = LookupResult(found=False)
+
+        plate_cmd = self._make_plate_cmd()
+        voice_cmd = self._make_voice_cmd(plate_cmd)
+        ctx = mock_context(raw_message=self._voice_raw(), base64_attachments=["YXVkaW8="])
+        await voice_cmd.handle(ctx)
+
+        ctx.react.assert_called_once_with("\U0001f3a4")
+        mock_stt.assert_called_once_with("YXVkaW8=")
+        mock_check.assert_called_once_with("ABC123")
+        send_calls = [call[0][0] for call in ctx.send.call_args_list]
+        assert any("Detected plate: ABC123" in msg for msg in send_calls)
+
+    @patch("commands.plate.check_plate_defrost")
+    @patch("commands.plate.check_plate")
+    @patch("commands.plate.extract_plate_from_voice")
+    async def test_voice_match_creates_pending(
+        self, mock_stt, mock_check, mock_defrost, mock_context
+    ):
+        mock_stt.return_value = "SXF180"
+        mock_check.return_value = LookupResult(
+            found=True,
+            match_count=1,
+            record_count=3,
+            sightings=[Sighting(date="JAN 1 2026", location="CITY A")],
+        )
+        mock_defrost.return_value = LookupResult(found=False)
+
+        plate_cmd = self._make_plate_cmd()
+        voice_cmd = self._make_voice_cmd(plate_cmd)
+        ctx = mock_context(raw_message=self._voice_raw(), base64_attachments=["YXVkaW8="])
+        await voice_cmd.handle(ctx)
+
+        assert 1234567890 in plate_cmd._pending
+        assert plate_cmd.get_pending_plate(1234567890) == "SXF180"
+
+    @patch("commands.plate.extract_plate_from_voice")
+    async def test_stt_error_sends_message(self, mock_stt, mock_context):
+        mock_stt.side_effect = STTError("Could not transcribe any speech")
+
+        plate_cmd = self._make_plate_cmd()
+        voice_cmd = self._make_voice_cmd(plate_cmd)
+        ctx = mock_context(raw_message=self._voice_raw(), base64_attachments=["YXVkaW8="])
+        await voice_cmd.handle(ctx)
+
+        send_text = ctx.send.call_args[0][0]
+        assert "Could not read plate from voice message" in send_text
+
+    @patch("commands.plate.extract_plate_from_voice")
+    async def test_unexpected_error_sends_message(self, mock_stt, mock_context):
+        mock_stt.side_effect = RuntimeError("Model crashed")
+
+        plate_cmd = self._make_plate_cmd()
+        voice_cmd = self._make_voice_cmd(plate_cmd)
+        ctx = mock_context(raw_message=self._voice_raw(), base64_attachments=["YXVkaW8="])
+        await voice_cmd.handle(ctx)
+
+        send_text = ctx.send.call_args[0][0]
+        assert "Could not read plate from voice message" in send_text
+
+    @patch("commands.plate.time.time", return_value=10000.0)
+    @patch("commands.plate.check_plate_defrost")
+    @patch("commands.plate.check_plate")
+    @patch("commands.plate.extract_plate_from_voice")
+    async def test_voice_cleans_up_pending(
+        self, mock_stt, mock_check, mock_defrost, _mock_time, mock_context
+    ):
+        """VoicePlateCommand triggers _cleanup_pending to avoid memory leaks."""
+        mock_stt.return_value = "ABC123"
+        mock_check.return_value = LookupResult(found=False)
+        mock_defrost.return_value = LookupResult(found=False)
+
+        plate_cmd = self._make_plate_cmd()
+        plate_cmd._pending[1] = ("OLD", 1.0, {"stopice"})  # expired
+        voice_cmd = self._make_voice_cmd(plate_cmd)
+        ctx = mock_context(raw_message=self._voice_raw(), base64_attachments=["YXVkaW8="])
+        await voice_cmd.handle(ctx)
+
+        assert 1 not in plate_cmd._pending

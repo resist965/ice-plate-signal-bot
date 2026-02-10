@@ -7,7 +7,7 @@ import os
 
 from signalbot import SignalBot
 
-from commands import HelpCommand, PlateCommand, PlateDetailCommand
+from commands import HelpCommand, PlateCommand, PlateDetailCommand, VoicePlateCommand
 from lookup import close_session
 
 
@@ -50,11 +50,14 @@ def main() -> None:
     groups = [signal_group]
     plate_cmd = PlateCommand()
     detail_cmd = PlateDetailCommand()
+    voice_cmd = VoicePlateCommand()
 
     bot.register(plate_cmd, contacts=False, groups=groups)
     bot.register(detail_cmd, contacts=False, groups=groups)
+    bot.register(voice_cmd, contacts=False, groups=groups)
 
     detail_cmd.set_plate_command(plate_cmd)
+    voice_cmd.set_plate_command(plate_cmd)
     bot.register(HelpCommand(), contacts=False, groups=groups)
 
     atexit.register(lambda: asyncio.get_event_loop().run_until_complete(close_session()))

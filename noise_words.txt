@@ -1,0 +1,104 @@
+# Noise words filtered out before plate extraction from voice transcriptions.
+# One word per line, case-insensitive. Blank lines and # comments are ignored.
+# Edit this file and restart the bot to update filtering without code changes.
+
+# Articles / prepositions / conjunctions
+AN
+THE
+IS
+IT
+OF
+TO
+AND
+FOR
+IN
+ON
+AT
+BY
+OR
+
+# Filler / hesitation
+UM
+UH
+HM
+OH
+
+# Command words
+PLATE
+NUMBER
+LICENSE
+CHECK
+LOOK
+UP
+LOOKUP
+
+# Pronouns / determiners
+I
+MY
+THIS
+THAT
+ITS
+
+# Vehicle / sighting terms
+CAR
+CARS
+VEHICLE
+VAN
+TRUCK
+SUV
+SEE
+SAW
+JUST
+GOT
+HERE
+THERE
+LIKE
+WITH
+WAS
+HAS
+HAVE
+BEEN
+NOT
+BUT
+
+# Number words (normalized to digits when in spelling context;
+# caught here as fallback when not adjacent to single-char tokens)
+ONE
+TWO
+THREE
+FOUR
+FIVE
+SIX
+SEVEN
+EIGHT
+NINE
+ZERO
+
+# NATO phonetic alphabet (normalized to letters before filtering;
+# caught here as fallback if normalization is ever bypassed)
+ALPHA
+BRAVO
+CHARLIE
+DELTA
+ECHO
+FOXTROT
+GOLF
+HOTEL
+INDIA
+JULIET
+KILO
+LIMA
+MIKE
+NOVEMBER
+OSCAR
+PAPA
+QUEBEC
+ROMEO
+SIERRA
+TANGO
+UNIFORM
+VICTOR
+WHISKEY
+XRAY
+YANKEE
+ZULU

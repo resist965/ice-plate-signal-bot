@@ -1,6 +1,6 @@
 # ice-plate-signal-bot
 
-A Signal bot that checks license plates against the [stopice.net](https://www.stopice.net) and [defrostmn.net](https://defrostmn.net) databases. Designed to run in a Signal group chat — send `/plate ABC1234` or send `/plate` with a photo of a license plate and the bot will look up the plate across both sources concurrently.
+A Signal bot that checks license plates against the [stopice.net](https://www.stopice.net) and [defrostmn.net](https://defrostmn.net) databases. Designed to run in a Signal group chat — send `/plate ABC1234`, send `/plate` with a photo of a license plate, or just send a voice message saying the plate number. The bot looks up the plate across both sources concurrently.
 
 ## Privacy & Security
 
@@ -75,6 +75,7 @@ A Signal bot that checks license plates against the [stopice.net](https://www.st
 |---------|-------------|
 | `/plate [LICENSE PLATE]` | Check a plate against the ICE vehicle databases (stopice.net and defrostmn.net) |
 | `/plate` + image | Attach a photo of a license plate — the bot reads the plate via OCR and runs the lookup |
+| Voice message | Send a voice note saying the plate number — no command needed, the bot auto-detects voice messages |
 | `/help` | Show available commands |
 
 When a match is found, the bot replies with a per-source summary (match/no match for each source, plus plate status like "Confirmed ICE" for defrostmn matches). React with 👀 to that reply to fetch full details including dates, locations, vehicle info, and sighting descriptions.
@@ -90,20 +91,32 @@ Send `/plate` with an image attachment (no text needed) to have the bot read the
 - The bot confirms the detected plate (e.g. "Detected plate: ABC123") before running the lookup
 - When both text and an image are provided, text input takes priority
 
+## Voice Messages
+
+Send a voice note saying the plate number — no `/plate` command needed. The bot automatically detects voice messages and transcribes them:
+
+- Uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2-based Whisper) for speech-to-text
+- Handles natural speech like "plate number Alpha Bravo Charlie 1 2 3" — NATO alphabet, number words ("one", "two"), and filler words are all supported
+- The bot reacts with a microphone emoji, confirms the detected plate, then runs the lookup
+- Speaks plate characters slowly? No problem — the bot merges adjacent single characters and short words into plate candidates
+- Common letter/digit confusion (O/0, I/1, S/5, etc.) is handled automatically via variant generation
+
 ## Architecture
 
 - `bot.py` — Entrypoint: loads config from env, registers commands, starts the Signal bot
-- `commands/plate.py` — `/plate` command handler and 👀 reaction handler for detail lookups
+- `commands/plate.py` — `/plate` command handler, voice plate command, 👀 reaction handler for detail lookups
 - `commands/help.py` — `/help` command
 - `lookup.py` — stopice.net lookup: HTTP requests and HTML parsing
 - `lookup_defrost.py` — defrostmn.net lookup: paginated plates + legacy stopice snapshot
 - `ocr.py` — License plate OCR: ALPR-based plate detection and reading (fast-alpr)
+- `stt.py` — Speech-to-text: voice message transcription and plate extraction (faster-whisper)
 - `check_sources.py` — Health-check script for live data sources
 
 ### Lookup flow
 
-1. `/plate ABC123` (or `/plate` + image attachment) → queries both stopice.net and defrostmn.net concurrently
+1. `/plate ABC123` (or `/plate` + image, or voice message) → queries both stopice.net and defrostmn.net concurrently
    - *Image path*: decodes the attached image, runs ALPR (YOLO plate detection + CCT OCR) to extract the plate text, then proceeds with the same lookup flow
+   - *Voice path*: transcribes the audio via faster-whisper, extracts plate candidates from the transcript (filtering noise words, merging characters, applying confusion swaps), then proceeds with the same lookup flow
    - **stopice.net**: POST to search endpoint → regex-based parsing of the (malformed) HTML results page
    - **defrostmn.net**: searches two sub-sources in parallel and merges results:
      - *Paginated plates* — fetches metadata, exact match (cached until data changes)
@@ -148,7 +161,7 @@ pytest -v
 pytest --cov=. --cov-report=term-missing
 ```
 
-228 tests covering parsers, async HTTP retry logic, paginated page decryption, caching, JSON lookup, command handlers, OCR pipeline, formatting helpers, bot configuration, and health-check script orchestration.
+325 tests covering parsers, async HTTP retry logic, paginated page decryption, caching, JSON lookup, command handlers, OCR pipeline, speech-to-text plate extraction, formatting helpers, bot configuration, and health-check script orchestration.
 
 Tests use saved HTML/JSON snapshots in `html_snapshots/` and mock all HTTP requests — no live requests to external services are made during testing.
 
@@ -192,6 +205,12 @@ python bot.py
 - Supports both full vehicle photos and cropped plate images
 - Very blurry, dark, or angled images may not produce results
 
+**Voice message not recognized**
+- Make sure you're sending a voice note (hold the microphone button), not an audio file attachment
+- Speak the plate characters clearly — you can use NATO alphabet ("Alpha Bravo Charlie") or spell them out
+- Number words ("one", "two") and filler words ("um", "the", "plate number") are filtered automatically
+- If the bot doesn't respond to a voice message, it may not have detected a valid plate pattern in the transcript
+
 ## License
 
 AGPLv3 — see [LICENSE](LICENSE).
@@ -207,6 +226,7 @@ AGPLv3 — see [LICENSE](LICENSE).
 
 - [signalbot](https://github.com/signalbot-org/signalbot) — Signal bot framework (MIT)
 - [fast-alpr](https://github.com/ankandrew/fast-alpr) — license plate detection and OCR (MIT)
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — speech-to-text transcription (MIT)
 - [aiohttp](https://github.com/aio-libs/aiohttp) — async HTTP client (Apache-2.0)
 - [beautifulsoup4](https://www.crummy.com/software/BeautifulSoup/) — HTML parsing (MIT)
 - [cryptography](https://github.com/pyca/cryptography) — decryption (Apache-2.0 / BSD-3-Clause)
